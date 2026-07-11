@@ -116,6 +116,7 @@ def test_resolve_output_refs_zeek_uid(tmp_path: Path) -> None:
     sensor_dir = data_root / "ZEEK-BO-CORE"
     sensor_dir.mkdir(parents=True)
     conn_path = sensor_dir / "conn.json"
+    # Matching uid on line 1 is valid when fields confirm the row (#L1 is OK then).
     conn_path.write_text(
         '{"uid":"TESTUID123","id.resp_h":"10.0.0.5","id.resp_p":443}\n',
         encoding="utf-8",
@@ -133,6 +134,59 @@ def test_resolve_output_refs_zeek_uid(tmp_path: Path) -> None:
     )
     refs = resolve_output_refs(event, data_root, ["zeek_conn"])
     assert refs["zeek_conn"].endswith("#L1")
+
+
+def test_rglob_candidate_order_is_sorted(tmp_path: Path) -> None:
+    data_root = tmp_path / "data"
+    (data_root / "z-sensor").mkdir(parents=True)
+    (data_root / "a-sensor").mkdir(parents=True)
+    (data_root / "z-sensor" / "conn.json").write_text(
+        '{"uid":"UID-Z","id.resp_h":"1.1.1.1","id.resp_p":1}\n',
+        encoding="utf-8",
+    )
+    (data_root / "a-sensor" / "conn.json").write_text(
+        '{"uid":"UID-A","id.resp_h":"2.2.2.2","id.resp_p":2}\n',
+        encoding="utf-8",
+    )
+    from socbench.capture.output_refs import _candidate_files
+
+    paths = _candidate_files(data_root, [], ("conn.json",))
+    assert [path.parent.name for path in paths] == ["a-sensor", "z-sensor"]
+
+
+def test_no_line1_fallback_refs(tmp_path: Path) -> None:
+    """Unrelated first lines must not become refs; only field-confirmed rows."""
+    data_root = tmp_path / "data"
+    host = data_root / "HOST-01.example"
+    host.mkdir(parents=True)
+    # Line 1 is noise; matching command_line is on line 3.
+    (host / "ecar.json").write_text(
+        '{"cmd":"noise"}\n{"cmd":"other"}\n{"command_line":"whoami"}\n',
+        encoding="utf-8",
+    )
+    # ASA line 1 has a different IP/port; true match is later.
+    asa_dir = data_root / "FW"
+    asa_dir.mkdir()
+    (asa_dir / "cisco_asa.log").write_text(
+        "Built TCP for outside:9.9.9.9/80 to dmz:10.0.0.1/443\n"
+        "Built TCP for outside:1.2.3.4/9999 to dmz:10.0.0.5/22\n",
+        encoding="utf-8",
+    )
+    from socbench.capture.models import CanonicalEvent
+
+    event = CanonicalEvent(
+        evidence_id="EVID-000000",
+        ts="2024-01-01T00:00:00Z",
+        host="HOST-01",
+        actor="attacker",
+        kind="process",
+        fields={"command_line": "whoami", "dst_ip": "1.2.3.4", "dst_port": 9999},
+        record_id="evt-001#0",
+    )
+    refs = resolve_output_refs(event, data_root, ["ecar", "cisco_asa"])
+    assert refs["ecar"].endswith("#L3")
+    assert refs["cisco_asa"].endswith("#L2")
+    assert not any(ref.endswith("#L1") for ref in refs.values())
 
 
 @pytest.mark.skipif(not BRANCH_OFFICE_BUNDLE.is_dir(), reason="branch-office bundle not generated")
