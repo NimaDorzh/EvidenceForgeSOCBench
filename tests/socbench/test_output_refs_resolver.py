@@ -254,3 +254,91 @@ def test_resolve_service_installed_p0_b(tmp_path: Path) -> None:
 
     assert refs["ecar"].endswith("#L1")
 
+
+
+
+
+def test_resolve_explicit_credentials_p1_a(tmp_path: Path) -> None:
+
+    """P1-A: explicit_credentials resolves via Security 4648 + TargetUserName."""
+
+    data_root = tmp_path / "data"
+
+    host_dir = data_root / "FS-01.colonial-energy.local"
+
+    host_dir.mkdir(parents=True)
+
+    (host_dir / "windows_event_security.xml").write_text(
+
+        (
+
+            "<Event><System><EventID>4648</EventID></System><EventData>"
+
+            '<Data Name="TargetUserName">s.kim</Data>'
+
+            '<Data Name="TargetDomainName">COLONIAL-ENERGY</Data>'
+
+            "</EventData></Event>\n"
+
+        ),
+
+        encoding="utf-8",
+
+    )
+
+    fields = {"target_username": "COLONIAL-ENERGY\\s.kim", "target_server": "FS-01"}
+
+    event = _event("explicit_credentials", "FS-01", fields)
+
+    refs = _assert_observed(event, data_root, ["windows_event_security"])
+
+    assert refs["windows_event_security"].endswith("#rec1")
+
+
+
+
+
+def test_resolve_create_remote_thread_p1_b(tmp_path: Path) -> None:
+
+    """P1-B: create_remote_thread resolves via Sysmon 8 and eCAR THREAD.REMOTE_CREATE."""
+
+    data_root = tmp_path / "data"
+
+    host_dir = data_root / "WKS-OPS-01.colonial-energy.local"
+
+    host_dir.mkdir(parents=True)
+
+    (host_dir / "windows_event_sysmon.xml").write_text(
+
+        (
+
+            "<Event><System><EventID>8</EventID></System><EventData>"
+
+            '<Data Name="TargetImage">C:\\Windows\\System32\\lsass.exe</Data>'
+
+            "</EventData></Event>\n"
+
+        ),
+
+        encoding="utf-8",
+
+    )
+
+    (host_dir / "ecar.json").write_text(
+
+        '{"object":"THREAD","action":"REMOTE_CREATE","properties":{"target":"lsass.exe"}}\n',
+
+        encoding="utf-8",
+
+    )
+
+    fields = {"target_process": "C:\\Windows\\System32\\lsass.exe"}
+
+    event = _event("create_remote_thread", "WKS-OPS-01", fields)
+
+    refs = _assert_observed(event, data_root, ["windows_event_sysmon", "ecar"])
+
+    assert refs["windows_event_sysmon"].endswith("#rec1")
+
+    assert refs["ecar"].endswith("#L1")
+
