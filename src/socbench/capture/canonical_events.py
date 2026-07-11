@@ -9,10 +9,18 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from evidenceforge.events.ground_truth import GroundTruthDocument, load_ground_truth_document
+from pydantic import ValidationError
+
+from evidenceforge.events.ground_truth import (
+    GROUND_TRUTH_JSON_FILENAME,
+    GroundTruthDocument,
+    find_ground_truth_document,
+    ground_truth_document_matches_scenario,
+)
 from evidenceforge.events.observation_manifest import ObservationManifest, load_observation_manifest
 from evidenceforge.models.scenario import Scenario
 from evidenceforge.utils.paths import safe_write_text
+from socbench.capture.errors import SocbenchCaptureError
 from socbench.capture.hashing import stable_seed
 from socbench.capture.models import CanonicalEvent, ObservationStatus
 from socbench.capture.output_refs import resolve_output_refs
@@ -186,7 +194,7 @@ def format_evidence_id(seed: int, ordinal: int) -> str:
     Stable for a fixed seed; changes when seed changes; unique per ordinal.
     NDJSON sort order remains (ts, record_id) and does not depend on this id.
     """
-    digest = hashlib.sha256(f"{seed}:{ordinal}".encode("utf-8")).hexdigest()[:8]
+    digest = hashlib.sha256(f"{seed}:{ordinal}".encode()).hexdigest()[:8]
     return f"EVID-{digest}"
 
 
@@ -277,10 +285,26 @@ def canonical_events_digest(events: list[CanonicalEvent]) -> str:
 
 
 def _require_ground_truth(bundle_dir: Path, scenario: Scenario) -> GroundTruthDocument:
-    document = load_ground_truth_document(bundle_dir, scenario)
-    if document is None:
-        msg = f"GROUND_TRUTH.json not found or invalid for bundle {bundle_dir}"
-        raise FileNotFoundError(msg)
+    path = find_ground_truth_document(bundle_dir)
+    if path is None:
+        raise SocbenchCaptureError(
+            f"{GROUND_TRUTH_JSON_FILENAME} not found under bundle {bundle_dir}"
+        )
+    try:
+        raw = path.read_text(encoding="utf-8")
+        document = GroundTruthDocument.model_validate_json(raw)
+    except ValidationError as exc:
+        raise SocbenchCaptureError(
+            f"Invalid {GROUND_TRUTH_JSON_FILENAME} schema in {path}"
+        ) from exc
+    except (OSError, ValueError) as exc:
+        raise SocbenchCaptureError(
+            f"Failed to read {GROUND_TRUTH_JSON_FILENAME} from {path}: {exc}"
+        ) from exc
+    if not ground_truth_document_matches_scenario(document, scenario):
+        raise SocbenchCaptureError(
+            f"{GROUND_TRUTH_JSON_FILENAME} at {path} does not match scenario {scenario.name!r}"
+        )
     return document
 
 

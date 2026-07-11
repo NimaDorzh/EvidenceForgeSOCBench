@@ -263,3 +263,17 @@ def test_no_line1_fallback_refs(tmp_path: Path) -> None:
     assert refs["ecar"].endswith("#L3")
     assert refs["cisco_asa"].endswith("#L2")
     assert not any(ref.endswith("#L1") for ref in refs.values())
+
+
+def test_ground_truth_schema_drift_raises_clear_error(tmp_path: Path) -> None:
+    from socbench.capture.canonical_events import build_canonical_events
+    from socbench.capture.errors import SocbenchCaptureError
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "GROUND_TRUTH.json").write_text('{"schema_version": 1, "broken": true}\n', encoding="utf-8")
+    scenario = _load_scenario(BRANCH_OFFICE_SCENARIO)
+    with pytest.raises(SocbenchCaptureError) as exc_info:
+        build_canonical_events(bundle, scenario, seed=42)
+    assert "Invalid GROUND_TRUTH.json schema" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, Exception)
