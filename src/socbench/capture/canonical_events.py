@@ -35,6 +35,27 @@ SOURCE_TO_OBSERVED_FORMATS: dict[str, list[str]] = {
     "ids": ["snort_alert"],
 }
 
+# Record-level candidate sources by GT event kind (per-record, not storyline-wide).
+KIND_CANDIDATE_FORMATS: dict[str, list[str]] = {
+    "connection": ["zeek_conn", "cisco_asa", "snort_alert", "ecar"],
+    "process": [
+        "windows_event_sysmon",
+        "windows_event_security",
+        "ecar",
+        "syslog",
+        "bash_history",
+    ],
+    "logon": ["windows_event_security", "ecar", "syslog"],
+    "failed_logon": ["windows_event_security", "ecar", "syslog"],
+    "logoff": ["windows_event_security", "ecar", "syslog"],
+    "ssh_session": ["zeek_conn", "syslog", "ecar", "cisco_asa"],
+    "rdp_session": ["zeek_conn", "windows_event_security", "ecar", "cisco_asa"],
+    "port_scan": ["zeek_conn", "cisco_asa", "snort_alert", "ecar"],
+    "web_scan": ["web_access", "zeek_conn", "cisco_asa", "snort_alert", "ecar"],
+    "beacon": ["proxy_access", "zeek_conn", "cisco_asa", "ecar", "windows_event_sysmon"],
+    "dns_query": ["zeek_dns", "zeek_conn"],
+}
+
 
 class CaptureMechanism(StrEnum):
     """How canonical events are collected from EvidenceForge."""
@@ -70,10 +91,14 @@ def build_canonical_events(
         storyline_id = event.storyline_id or ""
         spec = storyline_index.get(storyline_id)
         fields = _event_fields(event)
-        observed_formats = observed_formats_for_storyline(
-            storyline_id,
-            manifest,
-            document,
+        # P0-1: candidate sources are per-record (kind + storyline intersection),
+        # not a blind copy of storyline-wide observation status onto every record.
+        candidate_formats = candidate_formats_for_record(
+            kind=event.kind,
+            storyline_id=storyline_id,
+            fields=fields,
+            manifest=manifest,
+            document=document,
         )
         canonical = CanonicalEvent(
             evidence_id=format_evidence_id(resolved_seed, ordinal),
@@ -84,7 +109,7 @@ def build_canonical_events(
             actor=event.actor,
             kind=event.kind,
             fields=fields,
-            observed_by=observed_formats,
+            observed_by=candidate_formats,
             output_refs={},
             record_id=event.record_id,
             storyline_id=event.storyline_id,
@@ -93,7 +118,7 @@ def build_canonical_events(
         if data_root.is_dir():
             canonical = canonical.model_copy(
                 update={
-                    "output_refs": resolve_output_refs(canonical, data_root, observed_formats),
+                    "output_refs": resolve_output_refs(canonical, data_root, candidate_formats),
                 }
             )
         records.append(canonical)
@@ -119,6 +144,46 @@ def format_evidence_id(seed: int, ordinal: int) -> str:
     """Deterministic evidence id from scenario seed and attack-event ordinal."""
     _ = seed  # reserved for future seed-mixed schemes; ordinal is stable today
     return f"EVID-{ordinal:06d}"
+
+
+def candidate_formats_for_record(
+    *,
+    kind: str,
+    storyline_id: str,
+    fields: dict[str, Any],
+    manifest: ObservationManifest | None,
+    document: GroundTruthDocument,
+) -> list[str]:
+    """Return per-record candidate log formats for observation resolution.
+
+    Combines:
+    1. Kind-specific formats for this GT record (not shared across multi-record steps)
+    2. Storyline-level visible sources (intersection / union with kind when present)
+    3. Explicit expected_sources on the record attributes when present
+    """
+    kind_formats = list(KIND_CANDIDATE_FORMATS.get(kind, []))
+    storyline_formats = observed_formats_for_storyline(storyline_id, manifest, document)
+    expected = fields.get("expected_sources")
+    expected_formats: list[str] = []
+    if isinstance(expected, list):
+        for item in expected:
+            if isinstance(item, str):
+                expected_formats.extend(SOURCE_TO_OBSERVED_FORMATS.get(item, [item]))
+
+    # Prefer intersection of kind and storyline when both non-empty; otherwise kind
+    # alone (storyline-only inheritance caused multi-record pollution in P0-1 audit).
+    if kind_formats and storyline_formats:
+        shared = [fmt for fmt in kind_formats if fmt in set(storyline_formats)]
+        candidates = shared if shared else kind_formats
+    elif kind_formats:
+        candidates = kind_formats
+    else:
+        candidates = storyline_formats
+
+    for fmt in expected_formats:
+        if fmt not in candidates:
+            candidates.append(fmt)
+    return candidates
 
 
 def observed_formats_for_storyline(

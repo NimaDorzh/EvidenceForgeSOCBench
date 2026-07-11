@@ -133,3 +133,23 @@ def test_resolve_output_refs_zeek_uid(tmp_path: Path) -> None:
     )
     refs = resolve_output_refs(event, data_root, ["zeek_conn"])
     assert refs["zeek_conn"].endswith("#L1")
+
+
+@pytest.mark.skipif(not BRANCH_OFFICE_BUNDLE.is_dir(), reason="branch-office bundle not generated")
+def test_multi_record_step_observed_by_per_record() -> None:
+    """P0-1: multi-record storyline steps must not share one storyline-wide observed_by.
+
+    branch-office evt-003 has process records and a port_scan record; candidates
+    (and final observed_by after later P0-3) must differ by record kind.
+    """
+    scenario = _load_scenario(BRANCH_OFFICE_SCENARIO)
+    events = build_canonical_events(BRANCH_OFFICE_BUNDLE, scenario, seed=42)
+    step_events = [event for event in events if event.storyline_id == "evt-003"]
+    assert len(step_events) >= 2
+    by_kind = {event.kind: event.observed_by for event in step_events}
+    assert "process" in by_kind
+    assert "port_scan" in by_kind
+    # Process candidates are endpoint-oriented; port_scan candidates are network-oriented.
+    assert by_kind["process"] != by_kind["port_scan"]
+    assert "windows_event_sysmon" in by_kind["process"] or "ecar" in by_kind["process"]
+    assert "zeek_conn" in by_kind["port_scan"] or "cisco_asa" in by_kind["port_scan"]
