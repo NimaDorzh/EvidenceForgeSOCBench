@@ -21,6 +21,17 @@ _FORMAT_FILENAMES: dict[str, tuple[str, ...]] = {
     "snort_alert": ("snort_alert.log",),
 }
 
+# Endpoint formats must not search the whole data/ tree (PID collisions across hosts).
+_HOST_SCOPED_FORMATS = frozenset(
+    {
+        "windows_event_sysmon",
+        "windows_event_security",
+        "ecar",
+        "syslog",
+        "bash_history",
+    }
+)
+
 
 def resolve_output_refs(
     event: CanonicalEvent,
@@ -41,7 +52,18 @@ def resolve_output_refs(
         if fmt in refs:
             continue
         filenames = _FORMAT_FILENAMES.get(fmt, ())
-        candidates = _candidate_files(data_root, host_dirs, filenames)
+        # Host-scoped formats require a matching host directory; otherwise skip
+        # (avoids PID collisions on unrelated Windows hosts when Linux host has no logs).
+        if fmt in _HOST_SCOPED_FORMATS and not host_dirs:
+            continue
+        search_hosts = host_dirs if fmt in _HOST_SCOPED_FORMATS else host_dirs
+        include_data_root = fmt not in _HOST_SCOPED_FORMATS
+        candidates = _candidate_files(
+            data_root,
+            search_hosts,
+            filenames,
+            include_data_root=include_data_root,
+        )
         if fmt == "zeek_conn":
             ref = _resolve_zeek_conn(candidates, fields, bundle_root)
         elif fmt == "zeek_dns":
@@ -67,10 +89,14 @@ def _candidate_files(
     data_root: Path,
     host_dirs: list[Path],
     filenames: tuple[str, ...],
+    *,
+    include_data_root: bool = True,
 ) -> list[Path]:
     paths: list[Path] = []
     seen: set[Path] = set()
-    search_roots = host_dirs + [data_root]
+    search_roots = list(host_dirs)
+    if include_data_root:
+        search_roots.append(data_root)
     for root in search_roots:
         if not root.exists():
             continue

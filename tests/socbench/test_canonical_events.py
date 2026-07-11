@@ -232,6 +232,35 @@ def test_rglob_candidate_order_is_sorted(tmp_path: Path) -> None:
     assert [path.parent.name for path in paths] == ["a-sensor", "z-sensor"]
 
 
+def test_host_scoped_formats_skip_global_search_without_host_dir(tmp_path: Path) -> None:
+    """Endpoint logs must not match unrelated hosts when the event host has no data/ dir."""
+    data_root = tmp_path / "data"
+    other_host = data_root / "OTHER-HOST.example"
+    other_host.mkdir(parents=True)
+    (other_host / "ecar.json").write_text('{"pid":246423,"command_line":"id"}\n', encoding="utf-8")
+    (other_host / "windows_event_sysmon.xml").write_text(
+        '<Event><EventData><Data Name="ProcessId">246423</Data></EventData></Event>',
+        encoding="utf-8",
+    )
+    from socbench.capture.models import CanonicalEvent
+
+    event = CanonicalEvent(
+        evidence_id="EVID-000000",
+        ts="2024-01-01T00:00:00Z",
+        host="MUSIC-SRV-01",
+        actor="attacker",
+        kind="process",
+        fields={"command_line": "id", "pid": 246423},
+        record_id="evt-003#0",
+    )
+    refs = resolve_output_refs(
+        event,
+        data_root,
+        ["ecar", "windows_event_sysmon", "windows_event_security"],
+    )
+    assert refs == {}
+
+
 def test_no_line1_fallback_refs(tmp_path: Path) -> None:
     """Unrelated first lines must not become refs; only field-confirmed rows."""
     data_root = tmp_path / "data"
