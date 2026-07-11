@@ -21,7 +21,7 @@ REQUIRED = [
     "observation_status",
 ]
 ATTACK_RE = re.compile(r"^T\d{4}(\.\d{3})?$")
-EVID_RE = re.compile(r"^EVID-\d{6}$")
+EVID_RE = re.compile(r"^EVID-[0-9a-f]{8}$")
 
 
 def parse_ref(ref: str) -> tuple[str, str, int | None]:
@@ -166,11 +166,11 @@ def audit_bundle(name: str, bundle: Path) -> dict:
                         f"{evidence_id}/{fmt}: #rec{anchor} out of range in {path_part}"
                     )
 
-    numbers = [int(value.split("-")[1]) for value in evidence_ids if EVID_RE.fullmatch(value)]
-    if numbers != list(range(len(numbers))):
-        report["schema_issues"].append(f"non-contiguous evidence_id sequence: {numbers}")
+    numbers = [value for value in evidence_ids if EVID_RE.fullmatch(value)]
     if len(numbers) != len(set(numbers)):
         report["schema_issues"].append("duplicate evidence_id values")
+    if len(numbers) != len(evidence_ids):
+        report["schema_issues"].append("one or more evidence_id values failed format check")
 
     timestamps = [event.get("ts") for event in events]
     if timestamps != sorted(timestamps):

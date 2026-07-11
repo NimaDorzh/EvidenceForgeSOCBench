@@ -35,9 +35,16 @@ def test_parse_attack_ids_extracts_technique_prefix() -> None:
     assert parse_attack_ids(None) == []
 
 
-def test_format_evidence_id_is_zero_padded() -> None:
-    assert format_evidence_id(42, 0) == "EVID-000000"
-    assert format_evidence_id(42, 123) == "EVID-000123"
+def test_format_evidence_id_is_seed_mixed() -> None:
+    # Updated from zero-padded ordinal: seed must change the id (P0-4).
+    first = format_evidence_id(42, 0)
+    second = format_evidence_id(42, 1)
+    other_seed = format_evidence_id(99, 0)
+    assert first.startswith("EVID-")
+    assert len(first) == len("EVID-") + 8
+    assert first != second
+    assert first != other_seed
+    assert format_evidence_id(42, 0) == first
 
 
 @pytest.mark.skipif(not BRANCH_OFFICE_BUNDLE.is_dir(), reason="branch-office bundle not generated")
@@ -47,8 +54,18 @@ def test_build_canonical_events_branch_office_is_deterministic() -> None:
     second = build_canonical_events(BRANCH_OFFICE_BUNDLE, scenario, seed=42)
     assert canonical_events_digest(first) == canonical_events_digest(second)
     assert len(first) > 0
-    assert first[0].evidence_id == "EVID-000000"
+    assert first[0].evidence_id == format_evidence_id(42, 0)
     assert first[0].phase == "initial_access"
+
+
+@pytest.mark.skipif(not RETAIL_BUNDLE.is_dir(), reason="retail bundle not generated")
+def test_capture_different_seed_changes_digest() -> None:
+    scenario = _load_scenario(RETAIL_SCENARIO)
+    first = build_canonical_events(RETAIL_BUNDLE, scenario, seed=42)
+    second = build_canonical_events(RETAIL_BUNDLE, scenario, seed=99)
+    assert canonical_events_digest(first) != canonical_events_digest(second)
+    assert first[0].evidence_id != second[0].evidence_id
+    assert [event.ts for event in first] == [event.ts for event in second]
 
 
 @pytest.mark.skipif(not BRANCH_OFFICE_BUNDLE.is_dir(), reason="branch-office bundle not generated")

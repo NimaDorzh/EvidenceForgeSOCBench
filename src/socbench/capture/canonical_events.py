@@ -13,7 +13,7 @@ from evidenceforge.events.ground_truth import GroundTruthDocument, load_ground_t
 from evidenceforge.events.observation_manifest import ObservationManifest, load_observation_manifest
 from evidenceforge.models.scenario import Scenario
 from evidenceforge.utils.paths import safe_write_text
-from evidenceforge.utils.rng import _stable_seed
+from socbench.capture.hashing import stable_seed
 from socbench.capture.models import CanonicalEvent, ObservationStatus
 from socbench.capture.output_refs import resolve_output_refs
 from socbench.capture.scenario_index import build_storyline_index
@@ -176,13 +176,18 @@ def resolve_capture_seed(scenario: Scenario, seed: int | None) -> int:
     """Resolve the deterministic seed used for evidence identifiers."""
     if seed is not None:
         return seed
-    return _stable_seed(f"socbench:{scenario.name}") & 0x7FFFFFFF
+    return stable_seed(f"socbench:{scenario.name}")
 
 
 def format_evidence_id(seed: int, ordinal: int) -> str:
-    """Deterministic evidence id from scenario seed and attack-event ordinal."""
-    _ = seed  # reserved for future seed-mixed schemes; ordinal is stable today
-    return f"EVID-{ordinal:06d}"
+    """Deterministic evidence id from scenario seed and attack-event ordinal.
+
+    Format: EVID-<8 hex> where hex = sha256(f"{seed}:{ordinal}")[:8].
+    Stable for a fixed seed; changes when seed changes; unique per ordinal.
+    NDJSON sort order remains (ts, record_id) and does not depend on this id.
+    """
+    digest = hashlib.sha256(f"{seed}:{ordinal}".encode("utf-8")).hexdigest()[:8]
+    return f"EVID-{digest}"
 
 
 def candidate_formats_for_record(
