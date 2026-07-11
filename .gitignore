@@ -87,3 +87,4 @@ requirements.txt
 
 # Sample data (reference only, not tracked)
 sample_data/
+docs/PLAN.md
