@@ -9,7 +9,17 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-REQUIRED = ["evidence_id", "ts", "phase", "attack", "host", "kind", "observed_by", "output_refs"]
+REQUIRED = [
+    "evidence_id",
+    "ts",
+    "phase",
+    "attack",
+    "host",
+    "kind",
+    "observed_by",
+    "output_refs",
+    "observation_status",
+]
 ATTACK_RE = re.compile(r"^T\d{4}(\.\d{3})?$")
 EVID_RE = re.compile(r"^EVID-\d{6}$")
 
@@ -111,10 +121,24 @@ def audit_bundle(name: str, bundle: Path) -> dict:
             )
         if not observed_by:
             report["empty_observed_by"].append(evidence_id)
-            if not any(key in event for key in ("observable", "unobservable", "observation_status")):
+            if event.get("observation_status") != "unobserved":
                 report["unobservable_flag_missing"].append(evidence_id)
         if not output_refs:
             report["empty_output_refs"].append(evidence_id)
+        status = event.get("observation_status")
+        if status not in {"observed", "partial", "unobserved"}:
+            report["schema_issues"].append(f"line {index}: bad observation_status {status!r}")
+        if set(observed_by) != set(output_refs):
+            # already recorded in obs_mismatch above
+            pass
+        elif status == "observed" and event.get("unresolved_sources"):
+            report["schema_issues"].append(
+                f"line {index}: observed status with unresolved_sources={event.get('unresolved_sources')}"
+            )
+        elif status == "unobserved" and observed_by:
+            report["schema_issues"].append(f"line {index}: unobserved with non-empty observed_by")
+        elif status == "partial" and not event.get("unresolved_sources"):
+            report["schema_issues"].append(f"line {index}: partial without unresolved_sources")
 
         fields = event.get("fields", {})
         for fmt, ref in output_refs.items():

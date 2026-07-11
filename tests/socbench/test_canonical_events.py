@@ -91,7 +91,9 @@ def test_write_canonical_events_roundtrip(tmp_path: Path) -> None:
         "kind": "connection",
         "fields": {"dst_port": 21},
         "observed_by": ["zeek_conn"],
-        "output_refs": {},
+        "output_refs": {"zeek_conn": "data/zeek/conn.json#L10"},
+        "observation_status": "observed",
+        "unresolved_sources": [],
         "record_id": "evt-001#0",
         "storyline_id": "evt-001",
     }
@@ -103,6 +105,65 @@ def test_write_canonical_events_roundtrip(tmp_path: Path) -> None:
     lines = out.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
     assert json.loads(lines[0])["evidence_id"] == "EVID-000000"
+
+
+def test_finalize_observation_symmetry() -> None:
+    from socbench.capture.canonical_events import finalize_observation
+
+    observed, unresolved, status = finalize_observation(
+        ["zeek_conn", "ecar", "syslog"],
+        {"zeek_conn": "data/zeek/conn.json#L2", "ecar": "data/host/ecar.json#L5"},
+    )
+    assert observed == ["ecar", "zeek_conn"]
+    assert unresolved == ["syslog"]
+    assert status == "partial"
+    assert set(observed) == {"zeek_conn", "ecar"}
+
+
+@pytest.mark.skipif(not BRANCH_OFFICE_BUNDLE.is_dir(), reason="branch-office bundle not generated")
+@pytest.mark.skipif(not RETAIL_BUNDLE.is_dir(), reason="retail bundle not generated")
+def test_observed_by_matches_output_refs_keys() -> None:
+    for scenario_path, bundle in (
+        (BRANCH_OFFICE_SCENARIO, BRANCH_OFFICE_BUNDLE),
+        (RETAIL_SCENARIO, RETAIL_BUNDLE),
+    ):
+        scenario = _load_scenario(scenario_path)
+        events = build_canonical_events(bundle, scenario, seed=42)
+        for event in events:
+            assert set(event.observed_by) == set(event.output_refs), event.record_id
+
+
+@pytest.mark.skipif(not RETAIL_BUNDLE.is_dir(), reason="retail bundle not generated")
+def test_unobservable_events_carry_explicit_marker() -> None:
+    scenario = _load_scenario(RETAIL_SCENARIO)
+    events = build_canonical_events(RETAIL_BUNDLE, scenario, seed=42)
+    empty = [event for event in events if not event.observed_by]
+    assert empty, "retail Linux process rows should include unobserved events"
+    for event in empty:
+        assert event.observation_status == "unobserved"
+        assert isinstance(event.unresolved_sources, list)
+
+
+@pytest.mark.skipif(not BRANCH_OFFICE_BUNDLE.is_dir(), reason="branch-office bundle not generated")
+def test_multi_record_step_observed_by_per_record() -> None:
+    """P0-1/P0-3: multi-record steps keep per-record observation after resolve.
+
+    branch-office evt-003 has process + port_scan records; confirmed observed_by
+    (and candidate sets via observed∪unresolved) must differ by kind.
+    """
+    scenario = _load_scenario(BRANCH_OFFICE_SCENARIO)
+    events = build_canonical_events(BRANCH_OFFICE_BUNDLE, scenario, seed=42)
+    step_events = [event for event in events if event.storyline_id == "evt-003"]
+    assert len(step_events) >= 2
+    by_kind = {
+        event.kind: sorted(set(event.observed_by) | set(event.unresolved_sources))
+        for event in step_events
+    }
+    assert "process" in by_kind
+    assert "port_scan" in by_kind
+    assert by_kind["process"] != by_kind["port_scan"]
+    assert "windows_event_sysmon" in by_kind["process"] or "ecar" in by_kind["process"]
+    assert "zeek_conn" in by_kind["port_scan"] or "cisco_asa" in by_kind["port_scan"]
 
 
 def test_storyline_index_maps_techniques() -> None:
@@ -159,12 +220,10 @@ def test_no_line1_fallback_refs(tmp_path: Path) -> None:
     data_root = tmp_path / "data"
     host = data_root / "HOST-01.example"
     host.mkdir(parents=True)
-    # Line 1 is noise; matching command_line is on line 3.
     (host / "ecar.json").write_text(
         '{"cmd":"noise"}\n{"cmd":"other"}\n{"command_line":"whoami"}\n',
         encoding="utf-8",
     )
-    # ASA line 1 has a different IP/port; true match is later.
     asa_dir = data_root / "FW"
     asa_dir.mkdir()
     (asa_dir / "cisco_asa.log").write_text(
@@ -187,23 +246,3 @@ def test_no_line1_fallback_refs(tmp_path: Path) -> None:
     assert refs["ecar"].endswith("#L3")
     assert refs["cisco_asa"].endswith("#L2")
     assert not any(ref.endswith("#L1") for ref in refs.values())
-
-
-@pytest.mark.skipif(not BRANCH_OFFICE_BUNDLE.is_dir(), reason="branch-office bundle not generated")
-def test_multi_record_step_observed_by_per_record() -> None:
-    """P0-1: multi-record storyline steps must not share one storyline-wide observed_by.
-
-    branch-office evt-003 has process records and a port_scan record; candidates
-    (and final observed_by after later P0-3) must differ by record kind.
-    """
-    scenario = _load_scenario(BRANCH_OFFICE_SCENARIO)
-    events = build_canonical_events(BRANCH_OFFICE_BUNDLE, scenario, seed=42)
-    step_events = [event for event in events if event.storyline_id == "evt-003"]
-    assert len(step_events) >= 2
-    by_kind = {event.kind: event.observed_by for event in step_events}
-    assert "process" in by_kind
-    assert "port_scan" in by_kind
-    # Process candidates are endpoint-oriented; port_scan candidates are network-oriented.
-    assert by_kind["process"] != by_kind["port_scan"]
-    assert "windows_event_sysmon" in by_kind["process"] or "ecar" in by_kind["process"]
-    assert "zeek_conn" in by_kind["port_scan"] or "cisco_asa" in by_kind["port_scan"]

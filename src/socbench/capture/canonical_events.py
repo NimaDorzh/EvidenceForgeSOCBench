@@ -14,7 +14,7 @@ from evidenceforge.events.observation_manifest import ObservationManifest, load_
 from evidenceforge.models.scenario import Scenario
 from evidenceforge.utils.paths import safe_write_text
 from evidenceforge.utils.rng import _stable_seed
-from socbench.capture.models import CanonicalEvent
+from socbench.capture.models import CanonicalEvent, ObservationStatus
 from socbench.capture.output_refs import resolve_output_refs
 from socbench.capture.scenario_index import build_storyline_index
 
@@ -75,6 +75,10 @@ def build_canonical_events(
     """Build canonical attack-event records from a generated EF bundle."""
     bundle_dir = bundle_dir.resolve()
     document = _require_ground_truth(bundle_dir, scenario)
+    # Expected behaviour when observation_profile == "complete": EF's loader returns
+    # None by design (no missingness to report). Capture then uses
+    # GROUND_TRUTH.source_evidence_status and per-record kind candidates instead.
+    # That is a normal mode, not a load failure.
     manifest = load_observation_manifest(bundle_dir, scenario)
     storyline_index = build_storyline_index(scenario)
     resolved_seed = resolve_capture_seed(scenario, seed)
@@ -87,12 +91,11 @@ def build_canonical_events(
     attack_events.sort(key=lambda event: (event.time, event.record_id))
 
     records: list[CanonicalEvent] = []
+    data_root = bundle_dir / "data"
     for ordinal, event in enumerate(attack_events):
         storyline_id = event.storyline_id or ""
         spec = storyline_index.get(storyline_id)
         fields = _event_fields(event)
-        # P0-1: candidate sources are per-record (kind + storyline intersection),
-        # not a blind copy of storyline-wide observation status onto every record.
         candidate_formats = candidate_formats_for_record(
             kind=event.kind,
             storyline_id=storyline_id,
@@ -100,28 +103,42 @@ def build_canonical_events(
             manifest=manifest,
             document=document,
         )
-        canonical = CanonicalEvent(
-            evidence_id=format_evidence_id(resolved_seed, ordinal),
-            ts=_format_ts(event.time),
-            phase=spec.phase if spec else None,
-            attack=list(spec.attack) if spec else [],
-            host=event.system,
-            actor=event.actor,
-            kind=event.kind,
-            fields=fields,
-            observed_by=candidate_formats,
-            output_refs={},
-            record_id=event.record_id,
-            storyline_id=event.storyline_id,
-        )
-        data_root = bundle_dir / "data"
+        output_refs: dict[str, str] = {}
         if data_root.is_dir():
-            canonical = canonical.model_copy(
-                update={
-                    "output_refs": resolve_output_refs(canonical, data_root, candidate_formats),
-                }
+            stub = CanonicalEvent(
+                evidence_id=format_evidence_id(resolved_seed, ordinal),
+                ts=_format_ts(event.time),
+                host=event.system,
+                actor=event.actor,
+                kind=event.kind,
+                fields=fields,
+                record_id=event.record_id,
+                storyline_id=event.storyline_id,
             )
-        records.append(canonical)
+            output_refs = resolve_output_refs(stub, data_root, candidate_formats)
+
+        observed_by, unresolved, status = finalize_observation(
+            candidate_formats,
+            output_refs,
+        )
+        records.append(
+            CanonicalEvent(
+                evidence_id=format_evidence_id(resolved_seed, ordinal),
+                ts=_format_ts(event.time),
+                phase=spec.phase if spec else None,
+                attack=list(spec.attack) if spec else [],
+                host=event.system,
+                actor=event.actor,
+                kind=event.kind,
+                fields=fields,
+                observed_by=observed_by,
+                output_refs=output_refs,
+                observation_status=status,
+                unresolved_sources=unresolved,
+                record_id=event.record_id,
+                storyline_id=event.storyline_id,
+            )
+        )
 
     logger.info(
         "Built %s canonical events from %s using %s (seed=%s)",
@@ -131,6 +148,28 @@ def build_canonical_events(
         resolved_seed,
     )
     return records
+
+
+def finalize_observation(
+    candidates: list[str],
+    output_refs: dict[str, str],
+) -> tuple[list[str], list[str], ObservationStatus]:
+    """Apply P0-3 symmetry: observed_by mirrors confirmed refs; rest → unresolved.
+
+    Candidates are attempted first (P0-2). Only after an honest resolve attempt
+    do unconfirmed sources leave observed_by and land in unresolved_sources.
+    """
+    confirmed = sorted(output_refs)
+    unresolved = [fmt for fmt in candidates if fmt not in output_refs]
+    if not candidates:
+        status: ObservationStatus = "unobserved"
+    elif not confirmed:
+        status = "unobserved"
+    elif unresolved:
+        status = "partial"
+    else:
+        status = "observed"
+    return confirmed, unresolved, status
 
 
 def resolve_capture_seed(scenario: Scenario, seed: int | None) -> int:
