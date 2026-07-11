@@ -168,17 +168,17 @@ def _resolve_ecar_json(
     fields: dict[str, Any],
     bundle_root: Path,
 ) -> str | None:
-    # Prefer strong identifiers; do not match bare dst_ip alone (avoids #L1 noise).
+    # Prefer strong identifiers; avoid short substrings like command_line "id".
     strong: list[str] = []
     command_line = fields.get("command_line")
-    if isinstance(command_line, str) and command_line:
+    if isinstance(command_line, str) and len(command_line) >= 4:
         strong.append(command_line)
     uid = fields.get("uid")
     if isinstance(uid, str) and uid:
         strong.append(uid)
-    process_name = fields.get("process_name")
-    if isinstance(process_name, str) and process_name and "/" in process_name:
-        strong.append(process_name)
+    pid = fields.get("pid")
+    if isinstance(pid, int):
+        strong.append(f'"pid":{pid}')
     if not strong:
         return None
     for path in paths:
@@ -215,18 +215,19 @@ def _resolve_text_log(
 ) -> str | None:
     needles: list[str] = []
     command_line = fields.get("command_line")
-    if isinstance(command_line, str) and command_line:
+    if isinstance(command_line, str) and len(command_line) >= 4:
         needles.append(command_line)
     uid = fields.get("uid")
     if isinstance(uid, str) and uid:
         needles.append(uid)
-    # Require dst_ip+dst_port together when both present (avoids weak #L1 hits).
+    # Require structured port tokens (avoid bare "22" matching ens192, etc.).
     dst_ip = fields.get("dst_ip")
     dst_port = fields.get("dst_port")
     if isinstance(dst_ip, str) and dst_port is not None:
+        port_tokens = (f"/{dst_port}", f"DPT={dst_port}", f":{dst_port}", f"/{dst_port} ")
         for path in paths:
             for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-                if dst_ip in line and str(dst_port) in line:
+                if dst_ip in line and any(token in line for token in port_tokens):
                     return _relative_ref(path, bundle_root, f"#L{line_no}")
     return _first_line_with_needles(paths, needles, bundle_root)
 

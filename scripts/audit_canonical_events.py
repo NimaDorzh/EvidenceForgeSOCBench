@@ -37,8 +37,11 @@ def parse_ref(ref: str) -> tuple[str, str, int | None]:
 def line_consistent(fmt: str, line: str, fields: dict) -> bool:
     for key in ("uid", "command_line", "query"):
         value = fields.get(key)
-        if isinstance(value, str) and value in line:
+        if isinstance(value, str) and len(value) >= 4 and value in line:
             return True
+    pid = fields.get("pid")
+    if isinstance(pid, int) and (f'"pid":{pid}' in line or f"<Data Name=\"ProcessId\">{pid}</Data>" in line):
+        return True
     if fmt == "zeek_conn":
         dst_ip = fields.get("dst_ip")
         dst_port = fields.get("dst_port")
@@ -53,14 +56,21 @@ def line_consistent(fmt: str, line: str, fields: dict) -> bool:
         command_line = fields.get("command_line")
         if isinstance(command_line, str) and command_line in line:
             return True
-        pid = fields.get("pid")
         if isinstance(pid, int) and f'<Data Name="ProcessId">{pid}</Data>' in line:
             return True
-    if fmt in {"proxy_access", "web_access", "cisco_asa", "snort_alert", "ecar"}:
-        for key in ("command_line", "dst_ip", "uid", "query"):
-            value = fields.get(key)
-            if isinstance(value, str) and value in line:
+    if fmt in {"proxy_access", "web_access", "cisco_asa", "snort_alert", "syslog", "ecar"}:
+        dst_ip = fields.get("dst_ip")
+        dst_port = fields.get("dst_port")
+        if isinstance(dst_ip, str) and dst_port is not None:
+            port_tokens = (f"/{dst_port}", f"DPT={dst_port}", f":{dst_port}")
+            if dst_ip in line and any(token in line for token in port_tokens):
                 return True
+        for key in ("command_line", "uid", "query"):
+            value = fields.get(key)
+            if isinstance(value, str) and len(value) >= 4 and value in line:
+                return True
+        if isinstance(pid, int) and f'"pid":{pid}' in line:
+            return True
     return False
 
 
