@@ -64,6 +64,7 @@ KIND_CANDIDATE_FORMATS: dict[str, list[str]] = {
     "dns_query": ["zeek_dns", "zeek_conn"],
     "service_installed": ["windows_event_security", "ecar"],
     "explicit_credentials": ["windows_event_security"],
+    "create_remote_thread": ["windows_event_sysmon", "ecar"],
 }
 
 

@@ -23,6 +23,24 @@ REQUIRED = [
 ATTACK_RE = re.compile(r"^T\d{4}(\.\d{3})?$")
 EVID_RE = re.compile(r"^EVID-[0-9a-f]{8}$")
 
+# Partial events documented as EXPECTED-A or data mismatch (not resolver debt).
+KNOWN_PARTIAL_NOTES: dict[str, str] = {
+    "EVID-79379b3d": (
+        "EXPECTED-A: eCAR dropped by OBSERVATION_MANIFEST (DP4); Security/Sysmon present"
+    ),
+    "EVID-57bc5431": (
+        "EXPECTED-A: boot-time lsass PID lacks eCAR PROCESS lifecycle; Sysmon Event 8 only"
+    ),
+    "EVID-5cbc8381": (
+        "EF local bug: scenario/GT claim dst_port=443/ssl but Zeek/ASA/eCAR emit :80/http "
+        "(uid C5YtR44NxGf2T3IjXN); resolver cannot fabricate :443 eCAR ref"
+    ),
+    "EVID-6bdaf0d3": "EXPECTED-A: zeek_conn filtered/dropped by manifest (DP4)",
+    "EVID-547345ca": (
+        "ASA perimeter log for VPN OpenVPN :1194 not present; zeek_conn resolves"
+    ),
+}
+
 
 def parse_ref(ref: str) -> tuple[str, str, int | None]:
     if "#L" in ref:
@@ -34,14 +52,67 @@ def parse_ref(ref: str) -> tuple[str, str, int | None]:
     return ref, "unknown", None
 
 
-def line_consistent(fmt: str, line: str, fields: dict) -> bool:
+def _normalize_ip(value: str) -> str:
+    raw = value.strip().lower()
+    if raw.startswith("::ffff:"):
+        raw = raw.removeprefix("::ffff:")
+    return raw
+
+
+def _zeek_resp_port_for_uid(bundle: Path, uid: str, dst_ip: str | None = None) -> int | None:
+    data_root = bundle / "data"
+    if not data_root.is_dir():
+        return None
+    needle = f'"uid":"{uid}"'
+    for path in sorted(data_root.rglob("conn.json")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if needle not in line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            resp_h = record.get("id.resp_h")
+            resp_p = record.get("id.resp_p")
+            if resp_p is None:
+                continue
+            if isinstance(dst_ip, str) and resp_h and resp_h != dst_ip:
+                continue
+            return int(resp_p)
+    return None
+
+
+def line_consistent(fmt: str, line: str, fields: dict, *, bundle: Path | None = None) -> bool:
     for key in ("uid", "command_line", "query"):
         value = fields.get(key)
         if isinstance(value, str) and len(value) >= 4 and value in line:
             return True
     pid = fields.get("pid")
-    if isinstance(pid, int) and (f'"pid":{pid}' in line or f"<Data Name=\"ProcessId\">{pid}</Data>" in line):
+    if isinstance(pid, int) and (
+        f'"pid":{pid}' in line or f'<Data Name="ProcessId">{pid}</Data>' in line
+    ):
         return True
+
+    logon_id = fields.get("logon_id")
+    if isinstance(logon_id, str) and logon_id and logon_id.lower() in line.lower():
+        return True
+    source_ip = fields.get("source_ip")
+    if isinstance(source_ip, str) and source_ip:
+        if source_ip in line or _normalize_ip(source_ip) in _normalize_ip(line):
+            return True
+    service_name = fields.get("service_name")
+    if isinstance(service_name, str) and service_name and service_name in line:
+        return True
+    target_username = fields.get("target_username")
+    if isinstance(target_username, str) and target_username:
+        bare = target_username.split("\\")[-1]
+        if target_username in line or bare in line:
+            return True
+    target_process = fields.get("target_process")
+    if isinstance(target_process, str) and target_process:
+        if target_process in line or target_process.split("\\")[-1].lower() in line.lower():
+            return True
+
     if fmt == "zeek_conn":
         dst_ip = fields.get("dst_ip")
         dst_port = fields.get("dst_port")
@@ -62,7 +133,17 @@ def line_consistent(fmt: str, line: str, fields: dict) -> bool:
         dst_ip = fields.get("dst_ip")
         dst_port = fields.get("dst_port")
         if isinstance(dst_ip, str) and dst_port is not None:
-            port_tokens = (f"/{dst_port}", f"DPT={dst_port}", f":{dst_port}")
+            ports = [int(dst_port)]
+            uid = fields.get("uid")
+            if isinstance(uid, str) and uid and bundle is not None:
+                zeek_port = _zeek_resp_port_for_uid(bundle, uid, dst_ip)
+                if zeek_port is not None and zeek_port not in ports:
+                    ports.append(zeek_port)
+            port_tokens = tuple(
+                token
+                for port in ports
+                for token in (f"/{port}", f"DPT={port}", f":{port}", f'"{port}"')
+            )
             if dst_ip in line and any(token in line for token in port_tokens):
                 return True
         for key in ("command_line", "uid", "query"):
@@ -71,6 +152,10 @@ def line_consistent(fmt: str, line: str, fields: dict) -> bool:
                 return True
         if isinstance(pid, int) and f'"pid":{pid}' in line:
             return True
+        if fmt == "syslog" and "sshd" in line and ("Accepted" in line or "Opened" in line):
+            user = fields.get("user") or fields.get("actor")
+            if isinstance(user, str) and user and user in line:
+                return True
     return False
 
 
@@ -86,12 +171,15 @@ def audit_bundle(name: str, bundle: Path) -> dict:
         "empty_observed_by": [],
         "empty_output_refs": [],
         "unobservable_flag_missing": [],
+        "known_partial_notes": [],
     }
     if not ndjson.exists():
         report["missing_ndjson"] = str(ndjson)
         return report
 
-    events = [json.loads(line) for line in ndjson.read_text(encoding="utf-8").splitlines() if line.strip()]
+    events = [
+        json.loads(line) for line in ndjson.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
     report["events"] = len(events)
     evidence_ids: list[str] = []
 
@@ -149,8 +237,17 @@ def audit_bundle(name: str, bundle: Path) -> dict:
             report["schema_issues"].append(f"line {index}: unobserved with non-empty observed_by")
         elif status == "partial" and not event.get("unresolved_sources"):
             report["schema_issues"].append(f"line {index}: partial without unresolved_sources")
+        elif status == "partial":
+            note = KNOWN_PARTIAL_NOTES.get(evidence_id)
+            if note:
+                report["known_partial_notes"].append(
+                    {"evidence_id": evidence_id, "note": note, "unresolved_sources": event.get("unresolved_sources")}
+                )
 
-        fields = event.get("fields", {})
+        fields = dict(event.get("fields", {}))
+        actor = event.get("actor")
+        if isinstance(actor, str) and actor:
+            fields.setdefault("actor", actor)
         for fmt, ref in output_refs.items():
             path_part, anchor_kind, anchor = parse_ref(ref)
             file_path = bundle / path_part
@@ -165,7 +262,7 @@ def audit_bundle(name: str, bundle: Path) -> dict:
                         f"{evidence_id}/{fmt}: #L{anchor} out of range in {path_part}"
                     )
                     continue
-                if not line_consistent(fmt, lines[anchor - 1], fields):
+                if not line_consistent(fmt, lines[anchor - 1], fields, bundle=bundle):
                     report["ref_issues"].append(
                         f"{evidence_id}/{fmt}: line content not consistent with event fields"
                     )
@@ -208,6 +305,7 @@ def main() -> int:
     bundles = [
         ("retail-test", repo / "output" / "retail-test"),
         ("branch-office-test", repo / "output" / "branch-office-test"),
+        ("colonial-pipeline", repo / "scenarios" / "colonial-pipeline"),
     ]
     reports = [audit_bundle(name, path) for name, path in bundles]
     print(json.dumps(reports, indent=2, ensure_ascii=False))

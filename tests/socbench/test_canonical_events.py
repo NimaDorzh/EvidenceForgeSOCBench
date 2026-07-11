@@ -300,7 +300,9 @@ def test_ground_truth_schema_drift_raises_clear_error(tmp_path: Path) -> None:
 
     bundle = tmp_path / "bundle"
     bundle.mkdir()
-    (bundle / "GROUND_TRUTH.json").write_text('{"schema_version": 1, "broken": true}\n', encoding="utf-8")
+    (bundle / "GROUND_TRUTH.json").write_text(
+        '{"schema_version": 1, "broken": true}\n', encoding="utf-8"
+    )
     scenario = _load_scenario(BRANCH_OFFICE_SCENARIO)
     with pytest.raises(SocbenchCaptureError) as exc_info:
         build_canonical_events(bundle, scenario, seed=42)
