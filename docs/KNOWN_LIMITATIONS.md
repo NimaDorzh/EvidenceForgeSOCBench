@@ -41,3 +41,31 @@ into `lsass.exe`, seed=42).
 - **Resolver scope:** Partial is correct — refs cannot claim eCAR `:443` when data
   shows `:80`. See `docs/worklog/2026-07-11-evt-007-ssl-port-mismatch.md` for
   reproduction and workaround (`service: http`, `dst_port: 80` in scenario).
+
+## RDP client IP mismatch — local EF generation bug (not resolver)
+
+**Example:** `EVID-cdf56f97` (`evt-002#0`, WKS-OPS-01 RDP pivot, seed=42).
+
+- **Symptom:** Scenario declares RDP `source_ip=10.60.10.10` (VPN-GW-01);
+  Security/eCAR/Zeek refs show client `10.60.20.13` (`WorkstationName=WKS-03`).
+- **GROUND_TRUTH:** No emitted attack record on WKS-03 at `08:18Z`; WKS-03 is a
+  normal workstation, not a storyline jump host.
+- **Cause:** EF RDP/session generation attributes transport to the wrong
+  internal client IP (similar class of defect to `evt-007#1`).
+- **Fox impact:** Stage-0 `o1_scale=campaign_scale` (two hosts, no verifiable
+  edge) is correct on observable backfill but **must not** be read as validating
+  the narrative VPN→OPS pivot.
+- **Details:** `docs/worklog/2026-07-11-evt-002-rdp-source-ip-mismatch.md`
+
+## Colonial declared-vs-observed audit (2026-07-11)
+
+Systematic comparison of all 13 storyline steps: 29 explicit field checks, 4
+canonical mismatches (`evt-002` source_ip, `evt-007` service/orig_bytes), plus
+2 N/A backfill/sensor gaps. Tiger-critical transitions (003→004, 004→004b,
+005→005b, 006a→006b) **fail verifiable-edge tests** on observed canonical fields
+(ppid absent, distinct logon_ids, distinct PIDs). Full table:
+`docs/worklog/2026-07-11-declared-vs-observed-colonial.md`.
+
+**Tiger implication:** verifiable graph must be built from observed canonical
+fields only; storyline YAML is contextual, not authoritative topology.
+

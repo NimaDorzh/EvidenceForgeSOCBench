@@ -23,7 +23,7 @@ from evidenceforge.utils.paths import safe_write_text
 from socbench.capture.errors import SocbenchCaptureError
 from socbench.capture.hashing import stable_seed
 from socbench.capture.models import CanonicalEvent, ObservationStatus
-from socbench.capture.output_refs import resolve_output_refs
+from socbench.capture.output_refs import backfill_fields_from_output_refs, resolve_output_refs
 from socbench.capture.scenario_index import build_storyline_index
 
 logger = logging.getLogger(__name__)
@@ -127,6 +127,13 @@ def build_canonical_events(
                 storyline_id=event.storyline_id,
             )
             output_refs = resolve_output_refs(stub, data_root, candidate_formats)
+
+        fields = backfill_fields_from_output_refs(
+            kind=event.kind,
+            fields=fields,
+            output_refs=output_refs,
+            bundle_root=bundle_dir,
+        )
 
         observed_by, unresolved, status = finalize_observation(
             candidate_formats,

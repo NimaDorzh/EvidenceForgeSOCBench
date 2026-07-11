@@ -302,7 +302,9 @@ def _match_rdp_session_security(
     if isinstance(dst_ip, str) and zeek.get("resp_h") and zeek["resp_h"] != dst_ip:
         return False
     orig_h = zeek.get("orig_h")
-    if isinstance(orig_h, str) and _normalize_ip(data.get("IpAddress", "")) == _normalize_ip(orig_h):
+    if isinstance(orig_h, str) and _normalize_ip(data.get("IpAddress", "")) == _normalize_ip(
+        orig_h
+    ):
         return True
     return False
 
@@ -729,3 +731,199 @@ def _first_line_with_needles(
             if any(needle in line for needle in needles):
                 return _relative_ref(path, bundle_root, f"#L{line_no}")
     return None
+
+
+_REF_BACKFILL_PRIORITY = ("windows_event_security", "windows_event_sysmon", "ecar", "zeek_conn")
+
+
+def backfill_fields_from_output_refs(
+    *,
+    kind: str,
+    fields: dict[str, Any],
+    output_refs: dict[str, str],
+    bundle_root: Path,
+) -> dict[str, Any]:
+    """Merge observable fields extracted from resolved ``output_refs`` rows."""
+    merged = dict(fields)
+    for fmt in _REF_BACKFILL_PRIORITY:
+        ref = output_refs.get(fmt)
+        if ref is None:
+            continue
+        observed = _extract_observed_fields(fmt, ref, kind=kind, bundle_root=bundle_root)
+        for key, value in observed.items():
+            if value in (None, ""):
+                continue
+            if key not in merged or merged[key] in (None, ""):
+                merged[key] = value
+    return merged
+
+
+def _extract_observed_fields(
+    fmt: str,
+    ref: str,
+    *,
+    kind: str,
+    bundle_root: Path,
+) -> dict[str, Any]:
+    path, anchor = _resolve_ref_path(bundle_root, ref)
+    if not path.is_file():
+        return {}
+    if fmt == "windows_event_security":
+        return _extract_security_fields(path, anchor, kind=kind)
+    if fmt == "windows_event_sysmon":
+        return _extract_sysmon_fields(path, anchor, kind=kind)
+    if fmt == "ecar":
+        return _extract_ecar_fields(path, anchor, kind=kind)
+    if fmt == "zeek_conn":
+        return _extract_zeek_conn_fields(path, anchor)
+    return {}
+
+
+def _resolve_ref_path(bundle_root: Path, ref: str) -> tuple[Path, str]:
+    path_part, _, anchor = ref.partition("#")
+    return bundle_root / path_part, anchor
+
+
+def _extract_security_fields(path: Path, anchor: str, *, kind: str) -> dict[str, Any]:
+    if not anchor.startswith("rec"):
+        return {}
+    try:
+        record_no = int(anchor.removeprefix("rec"))
+    except ValueError:
+        return {}
+    chunks = _iter_xml_events(path.read_text(encoding="utf-8"))
+    if record_no < 1 or record_no > len(chunks):
+        return {}
+    chunk = chunks[record_no - 1]
+    data = _xml_data_fields(chunk)
+    event_id = _xml_event_id(chunk)
+    observed: dict[str, Any] = {}
+    if event_id == 4624:
+        if data.get("IpAddress"):
+            observed["source_ip"] = _normalize_ip(data["IpAddress"])
+        if data.get("TargetLogonId"):
+            observed["logon_id"] = data["TargetLogonId"]
+        if data.get("LogonType"):
+            observed["logon_type"] = int(data["LogonType"])
+    elif event_id == 5156:
+        if data.get("SourceAddress"):
+            observed["source_ip"] = _normalize_ip(data["SourceAddress"])
+        if data.get("DestAddress"):
+            observed["dst_ip"] = data["DestAddress"]
+        if data.get("DestPort"):
+            observed["dst_port"] = int(data["DestPort"])
+    elif event_id == 4648 and kind == "explicit_credentials":
+        if data.get("IpAddress"):
+            observed["source_ip"] = _normalize_ip(data["IpAddress"])
+    return observed
+
+
+def _extract_sysmon_fields(path: Path, anchor: str, *, kind: str) -> dict[str, Any]:
+    """Extract process lineage fields from Sysmon XML (Event ID 1 create)."""
+    if kind != "process" or not anchor.startswith("rec"):
+        return {}
+    try:
+        record_no = int(anchor.removeprefix("rec"))
+    except ValueError:
+        return {}
+    chunks = _iter_xml_events(path.read_text(encoding="utf-8"))
+    if record_no < 1 or record_no > len(chunks):
+        return {}
+    chunk = chunks[record_no - 1]
+    if _xml_event_id(chunk) != "1":
+        return {}
+    data = _xml_data_fields(chunk)
+    observed: dict[str, Any] = {}
+    if data.get("ProcessId"):
+        observed["pid"] = int(data["ProcessId"])
+    if data.get("ParentProcessId"):
+        observed["ppid"] = int(data["ParentProcessId"])
+    return observed
+
+
+def _extract_ecar_fields(path: Path, anchor: str, *, kind: str) -> dict[str, Any]:
+    if not anchor.startswith("L"):
+        return {}
+    try:
+        line_no = int(anchor.removeprefix("L"))
+    except ValueError:
+        return {}
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if line_no < 1 or line_no > len(lines):
+        return {}
+    record = _parse_ecar_record(lines[line_no - 1])
+    if record is None:
+        return {}
+    observed: dict[str, Any] = {}
+    obj = record.get("object")
+    action = record.get("action")
+    if obj == "FLOW" and action == "CONNECT":
+        src_ip = _ecar_string(_ecar_get(record, "src_ip"))
+        dst_ip = _ecar_string(_ecar_get(record, "dst_ip"))
+        dst_port = _ecar_get(record, "dst_port")
+        if src_ip:
+            observed["source_ip"] = _normalize_ip(src_ip)
+        if dst_ip:
+            observed["dst_ip"] = dst_ip
+        if dst_port not in (None, ""):
+            observed["dst_port"] = int(dst_port)
+    elif obj == "USER_SESSION" and action == "LOGIN":
+        src_ip = _ecar_string(_ecar_get(record, "src_ip"))
+        logon_id = _ecar_string(_ecar_get(record, "logon_id"))
+        logon_type = _ecar_get(record, "logon_type")
+        if src_ip:
+            observed["source_ip"] = _normalize_ip(src_ip)
+        if logon_id:
+            observed["logon_id"] = logon_id
+        if logon_type not in (None, ""):
+            observed["logon_type"] = int(logon_type)
+    elif obj == "SERVICE" and action == "CREATE" and kind == "service_installed":
+        service_name = _ecar_string(_ecar_get(record, "service_name"))
+        if service_name:
+            observed["service_name"] = service_name
+    elif obj == "PROCESS" and action == "CREATE" and kind == "process":
+        pid = record.get("pid")
+        ppid = record.get("ppid")
+        if pid not in (None, ""):
+            observed["pid"] = int(pid)
+        if ppid not in (None, ""):
+            observed["ppid"] = int(ppid)
+    return observed
+
+
+def _extract_zeek_conn_fields(path: Path, anchor: str) -> dict[str, Any]:
+    if not anchor.startswith("L"):
+        return {}
+    try:
+        line_no = int(anchor.removeprefix("L"))
+    except ValueError:
+        return {}
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if line_no < 1 or line_no > len(lines):
+        return {}
+    try:
+        record = json.loads(lines[line_no - 1])
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(record, dict):
+        return {}
+    observed: dict[str, Any] = {}
+    orig_h = record.get("id.orig_h")
+    resp_h = record.get("id.resp_h")
+    resp_p = record.get("id.resp_p")
+    uid = record.get("uid")
+    orig_bytes = record.get("orig_bytes")
+    service = record.get("service")
+    if isinstance(orig_h, str) and orig_h:
+        observed["source_ip"] = _normalize_ip(orig_h)
+    if isinstance(resp_h, str) and resp_h:
+        observed["dst_ip"] = resp_h
+    if resp_p is not None:
+        observed["dst_port"] = int(resp_p)
+    if isinstance(uid, str) and uid:
+        observed["uid"] = uid
+    if orig_bytes is not None:
+        observed["orig_bytes"] = int(orig_bytes)
+    if isinstance(service, str) and service:
+        observed["service"] = service
+    return observed
