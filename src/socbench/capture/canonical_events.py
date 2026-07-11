@@ -62,6 +62,7 @@ KIND_CANDIDATE_FORMATS: dict[str, list[str]] = {
     "web_scan": ["web_access", "zeek_conn", "cisco_asa", "snort_alert", "ecar"],
     "beacon": ["proxy_access", "zeek_conn", "cisco_asa", "ecar", "windows_event_sysmon"],
     "dns_query": ["zeek_dns", "zeek_conn"],
+    "service_installed": ["windows_event_security", "ecar"],
 }
 
 
