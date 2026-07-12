@@ -14,7 +14,14 @@ import yaml
 
 from evidenceforge.models.scenario import Scenario
 from socbench.capture.canonical_events import build_canonical_events
-from socbench.truth.common import index_by_evidence_id, load_canonical_events, resolve_evidence_id
+from socbench.capture.models import CanonicalEvent
+from socbench.truth.common import (
+    index_by_evidence_id,
+    load_canonical_events,
+    parse_ts,
+    resolve_evidence_id,
+    window_start_alignment_warning,
+)
 from socbench.truth.fox import FOX_MANIFEST_FILENAME, build_fox_manifest_from_file
 from socbench.truth.goat import GOAT_MANIFEST_FILENAME, build_goat_manifest_from_file
 from socbench.truth.mouse import MOUSE_MANIFEST_FILENAME, build_mouse_manifest_from_file
@@ -128,6 +135,28 @@ def _build_all_manifests(events_path: Path) -> dict[str, dict[str, Any]]:
             window_start=COLONIAL_WINDOW_START,
         ),
     }
+
+
+def test_window_start_alignment_warning_when_origin_precedes_events() -> None:
+    events = [
+        CanonicalEvent(
+            evidence_id="EVID-late",
+            ts="2024-01-15T15:29:39Z",
+            host="HOST-A",
+            actor="attacker",
+            kind="process",
+            fields={},
+            record_id="evt-0#0",
+        )
+    ]
+    warning = window_start_alignment_warning(
+        events,
+        parse_ts("2024-01-15T05:00:00Z"),
+        stage_minutes=30,
+    )
+    assert warning is not None
+    assert "stages 0.." in warning
+    assert "earliest canonical event" in warning
 
 
 @pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")

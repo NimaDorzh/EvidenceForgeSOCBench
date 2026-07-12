@@ -284,3 +284,50 @@ def test_fox_ignores_ground_truth_labels() -> None:
     )
 
     assert redacted["stages"] == baseline["stages"]
+
+
+def test_fox_skips_empty_early_stages() -> None:
+    """Early empty stages must not crash when window_start precedes all events."""
+    events = [
+        _event(
+            evidence_id="EVID-late",
+            ts="2024-01-15T15:29:39Z",
+            host="MUSIC-SRV-01",
+            kind="connection",
+            fields={"source_ip": "203.0.113.45", "dst_ip": "10.10.30.50"},
+        ),
+        _event(
+            evidence_id="EVID-process",
+            ts="2024-01-15T15:30:05Z",
+            host="MUSIC-SRV-01",
+            fields={"command_line": "bash -c whoami"},
+        ),
+    ]
+    early_origin = "2024-01-15T05:00:00Z"
+    manifest = build_fox_manifest(events, window_start=early_origin, stage_minutes=30)
+
+    assert manifest["stages"]
+    assert manifest["stages"][0]["o1_scale"]["scale_label"] is None
+    assert manifest["stages"][-1]["o3"]["first_affected_host"] == "MUSIC-SRV-01"
+    assert manifest["stages"][-1]["o3"]["first_affected_evidence_id"] == "EVID-late"
+
+
+def test_fox_empty_early_stages_matches_late_stage_labels() -> None:
+    """Manifest with early empty prefix should match infer-window baseline labels."""
+    events = [
+        _event(
+            evidence_id="EVID-a",
+            ts="2024-01-15T15:29:39Z",
+            host="MUSIC-SRV-01",
+            kind="connection",
+            fields={"source_ip": "203.0.113.45", "dst_ip": "10.10.30.50"},
+        ),
+    ]
+    baseline = build_fox_manifest(events)
+    with_early_prefix = build_fox_manifest(
+        events,
+        window_start="2024-01-15T05:00:00Z",
+        stage_minutes=30,
+    )
+    assert with_early_prefix["stages"][-1]["o1_scale"] == baseline["stages"][-1]["o1_scale"]
+    assert with_early_prefix["stages"][-1]["o2_type"] == baseline["stages"][-1]["o2_type"]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from pathlib import Path
 from typing import Annotated
@@ -15,7 +16,6 @@ from socbench.capture.canonical_events import (
     CANONICAL_EVENTS_FILENAME,
     CaptureMechanism,
     build_canonical_events,
-    canonical_events_digest,
     write_canonical_events,
 )
 from socbench.truth.fox import (
@@ -37,6 +37,11 @@ from socbench.truth.panda import (
     PANDA_MANIFEST_FILENAME,
     build_panda_manifest_from_file,
     write_panda_manifest,
+)
+from socbench.truth.common import (
+    load_canonical_events,
+    resolve_window_start,
+    window_start_alignment_warning,
 )
 from socbench.truth.tiger import (
     TIGER_GED_SPEC_FILENAME,
@@ -97,7 +102,7 @@ def capture_command(
     )
     out_path = (output or (bundle_dir / "grader" / CANONICAL_EVENTS_FILENAME)).resolve()
     write_canonical_events(events, out_path)
-    digest = canonical_events_digest(events)
+    digest = hashlib.sha256(out_path.read_bytes()).hexdigest()
     console.print(f"[green]Wrote {len(events)} canonical events[/green] -> {out_path}")
     console.print(f"SHA-256: {digest}")
 
@@ -141,6 +146,18 @@ def truth_build_command(
     events_path = events.resolve()
     out_dir = (output or events_path.parent).resolve()
     selected = {item.lower() for item in (task or list(DEFAULT_TRUTH_TASKS))}
+
+    staged_tasks = selected & {"fox", "goat", "panda"}
+    if window_start is not None and staged_tasks:
+        canonical_events = load_canonical_events(events_path)
+        origin = resolve_window_start(canonical_events, window_start)
+        alignment_warning = window_start_alignment_warning(
+            canonical_events,
+            origin,
+            stage_minutes=stage_minutes,
+        )
+        if alignment_warning:
+            console.print(f"[yellow]Warning:[/yellow] {alignment_warning}")
 
     if "fox" in selected:
         manifest = build_fox_manifest_from_file(

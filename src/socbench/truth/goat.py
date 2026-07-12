@@ -13,8 +13,8 @@ from socbench.truth.common import (
     estimate_share_total_bytes,
     events_through_stage,
     extract_encrypt_paths,
-    infer_window_start,
     is_ransomware_event,
+    resolve_window_start,
     is_vss_delete_event,
     load_canonical_events,
     normalize_hostname,
@@ -43,7 +43,7 @@ def build_goat_manifest(
     if not events:
         return _empty_manifest(stage_minutes=stage_minutes)
 
-    origin = parse_ts(window_start) if window_start else infer_window_start(events)
+    origin = resolve_window_start(events, window_start)
     max_stage = max(stage_of(event.ts, origin, stage_minutes=stage_minutes) for event in events)
 
     encrypt_targets = _collect_encrypt_targets(events)

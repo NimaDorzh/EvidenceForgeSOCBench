@@ -28,7 +28,8 @@ TIGER_GED_SPEC_FILENAME = "tiger_ged_spec.json"
 PSEXEC_SERVICE_WINDOW_MINUTES = 15
 FILE_ARTIFACT_WINDOW_MINUTES = 45
 AUTH_SESSION_WINDOW_MINUTES = 120
-SEQUENTIAL_CONTEXT_WINDOW_MINUTES = 30
+SEQUENTIAL_CONTEXT_WINDOW_MINUTES = 15
+SEQUENTIAL_CONTEXT_MAX_SUCCESSORS = 3
 
 EdgeClass = Literal["verifiable", "contextual"]
 
@@ -118,6 +119,14 @@ def build_tiger_manifest(events: list[CanonicalEvent]) -> dict[str, Any]:
                 "sequential_tools_same_host",
                 "lateral_shared_source_ip",
             ],
+            "sequential_tools_same_host": {
+                "window_minutes": SEQUENTIAL_CONTEXT_WINDOW_MINUTES,
+                "max_temporal_successors": SEQUENTIAL_CONTEXT_MAX_SUCCESSORS,
+                "note": (
+                    "Per-host process chain links only the next N temporal successors "
+                    "within the window (linear growth, not all pairs)."
+                ),
+            },
             "observation_status": (
                 "Edge detection uses observable kind/fields only; grader phase/attack ignored"
             ),
@@ -436,24 +445,29 @@ def _build_contextual_edges(
         )
         counter += 1
 
-    process_events = sorted(
-        [event for event in events if event.kind == "process"],
-        key=lambda event: parse_ts(event.ts),
-    )
-    for left in process_events:
-        for right in process_events:
-            if left.evidence_id == right.evidence_id:
-                continue
-            if normalize_hostname(left.host) != normalize_hostname(right.host):
-                continue
-            if left.kind != "process" or right.kind != "process":
-                continue
-            delta = parse_ts(right.ts) - parse_ts(left.ts)
-            if delta <= timedelta(0):
-                continue
-            if delta > timedelta(minutes=SEQUENTIAL_CONTEXT_WINDOW_MINUTES):
-                continue
-            add_contextual(left, right, "sequential_tools_same_host")
+    process_by_host: dict[str, list[CanonicalEvent]] = {}
+    for event in events:
+        if event.kind != "process":
+            continue
+        host = normalize_hostname(event.host)
+        process_by_host.setdefault(host, []).append(event)
+
+    window = timedelta(minutes=SEQUENTIAL_CONTEXT_WINDOW_MINUTES)
+    for host_events in process_by_host.values():
+        ordered = sorted(host_events, key=lambda event: parse_ts(event.ts))
+        for left_idx, left in enumerate(ordered):
+            left_time = parse_ts(left.ts)
+            successors = 0
+            for right in ordered[left_idx + 1 :]:
+                delta = parse_ts(right.ts) - left_time
+                if delta <= timedelta(0):
+                    continue
+                if delta > window:
+                    break
+                add_contextual(left, right, "sequential_tools_same_host")
+                successors += 1
+                if successors >= SEQUENTIAL_CONTEXT_MAX_SUCCESSORS:
+                    break
 
     logons = [event for event in events if event.kind == "logon"]
     for left in logons:

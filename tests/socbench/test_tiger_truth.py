@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,9 @@ import yaml
 from evidenceforge.models.scenario import Scenario
 from socbench.capture.canonical_events import build_canonical_events
 from socbench.capture.models import CanonicalEvent
+from socbench.truth.common import parse_ts
 from socbench.truth.tiger import (
+    SEQUENTIAL_CONTEXT_MAX_SUCCESSORS,
     build_tiger_ged_spec,
     build_tiger_manifest,
     score_graph_edit_distance,
@@ -26,6 +29,69 @@ def _edge_rules(manifest: dict) -> set[tuple[str, str]]:
         (edge["rule"], edge["edge_class"])
         for edge in manifest["edges"]
     }
+
+
+def test_sequential_tools_same_host_growth_is_bounded() -> None:
+    """Single-host process chains must grow linearly, not as all pairs."""
+    base_ts = parse_ts("2024-01-15T15:00:00Z")
+    events = [
+        CanonicalEvent(
+            evidence_id=f"EVID-{index:03d}",
+            ts=(base_ts + timedelta(minutes=index * 2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            host="MUSIC-SRV-01",
+            actor="attacker",
+            kind="process",
+            fields={"command_line": f"step-{index}.exe", "pid": 4000 + index},
+            observed_by=["windows_event_sysmon"],
+            record_id=f"evt-{index}#0",
+        )
+        for index in range(22)
+    ]
+    manifest = build_tiger_manifest(events)
+    sequential_edges = [
+        edge
+        for edge in manifest["edges"]
+        if edge["rule"] == "sequential_tools_same_host"
+    ]
+    max_pairwise = len(events) * (len(events) - 1) // 2
+    linear_cap = len(events) * SEQUENTIAL_CONTEXT_MAX_SUCCESSORS
+
+    assert len(sequential_edges) < max_pairwise // 2
+    assert len(sequential_edges) <= linear_cap
+    assert all(edge["source_attribution"] for edge in sequential_edges)
+
+
+def test_sequential_tools_skips_distant_process_pairs() -> None:
+    """Process pairs separated by more than the context window must not link."""
+    events = [
+        CanonicalEvent(
+            evidence_id="EVID-early",
+            ts="2024-01-15T15:00:00Z",
+            host="MUSIC-SRV-01",
+            actor="attacker",
+            kind="process",
+            fields={"command_line": "recon.exe", "pid": 1000},
+            observed_by=["windows_event_sysmon"],
+            record_id="evt-0#0",
+        ),
+        CanonicalEvent(
+            evidence_id="EVID-late",
+            ts="2024-01-15T17:00:00Z",
+            host="MUSIC-SRV-01",
+            actor="attacker",
+            kind="process",
+            fields={"command_line": "encrypt.exe", "pid": 2000},
+            observed_by=["windows_event_sysmon"],
+            record_id="evt-1#0",
+        ),
+    ]
+    manifest = build_tiger_manifest(events)
+    sequential_edges = [
+        edge
+        for edge in manifest["edges"]
+        if edge["rule"] == "sequential_tools_same_host"
+    ]
+    assert sequential_edges == []
 
 
 def test_psexec_remote_service_edge_is_verifiable() -> None:

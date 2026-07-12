@@ -69,3 +69,26 @@ canonical mismatches (`evt-002` source_ip, `evt-007` service/orig_bytes), plus
 **Tiger implication:** verifiable graph must be built from observed canonical
 fields only; storyline YAML is contextual, not authoritative topology.
 
+## Tiger `sequential_tools_same_host` density (fixed 2026-07-12)
+
+**Symptom (pre-fix):** On dense single-host scenarios (e.g. retail-test, 22 events
+on `MUSIC-SRV-01`), the rule linked most within-window process pairs on the same
+host (~173 contextual edges, near C(n,2)), diluting GED signal.
+
+**Fix:** Per-host temporal chain — each process links to at most the next 3
+successors within a 15-minute window (linear growth). See
+`docs/worklog/2026-07-12-tiger-sequential-tools-density.md`.
+
+**Remaining edge case:** `lateral_shared_source_ip` still pairs logon events
+sharing a source IP across hosts; usually low volume on multi-host scenarios.
+
+## Fox empty early stages when `--window-start` precedes events (fixed 2026-07-12)
+
+**Symptom (pre-fix):** `truth build` with scenario `time_window.start` earlier
+than the first canonical event (e.g. retail at `05:00Z` vs first event
+`15:29Z`) crashed in `build_fox_manifest` with `ValueError: min() iterable
+argument is empty`.
+
+**Fix:** Empty cumulative slices skip first-event updates; CLI emits an
+alignment warning. See `docs/worklog/2026-07-12-fox-empty-early-stages.md`.
+

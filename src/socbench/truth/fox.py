@@ -21,8 +21,8 @@ from socbench.truth.common import (
     classify_type_label,
     distinct_precursor_categories,
     events_through_stage,
-    infer_window_start,
     is_ransomware_event,
+    resolve_window_start,
     load_canonical_events,
     normalize_hostname,
     parse_ts,
@@ -43,7 +43,7 @@ def build_fox_manifest(
     if not events:
         return _empty_manifest(stage_minutes=stage_minutes)
 
-    origin = parse_ts(window_start) if window_start else infer_window_start(events)
+    origin = resolve_window_start(events, window_start)
     max_stage = max(stage_of(event.ts, origin, stage_minutes=stage_minutes) for event in events)
 
     first_affected_host: str | None = None
@@ -55,16 +55,17 @@ def build_fox_manifest(
     stages: list[dict[str, Any]] = []
     for stage in range(max_stage + 1):
         cumulative = events_through_stage(events, stage, origin, stage_minutes=stage_minutes)
-        if not first_affected_host:
-            first_event = min(cumulative, key=lambda event: parse_ts(event.ts))
-            first_affected_host = normalize_hostname(first_event.host)
-            first_affected_evidence_id = first_event.evidence_id
+        if cumulative:
+            if not first_affected_host:
+                first_event = min(cumulative, key=lambda event: parse_ts(event.ts))
+                first_affected_host = normalize_hostname(first_event.host)
+                first_affected_evidence_id = first_event.evidence_id
 
-        for event in sorted(cumulative, key=lambda item: parse_ts(item.ts)):
-            if first_ransomware_evidence_id is None and is_ransomware_event(event):
-                first_ransomware_ts = event.ts
-                first_ransomware_host = normalize_hostname(event.host)
-                first_ransomware_evidence_id = event.evidence_id
+            for event in sorted(cumulative, key=lambda item: parse_ts(item.ts)):
+                if first_ransomware_evidence_id is None and is_ransomware_event(event):
+                    first_ransomware_ts = event.ts
+                    first_ransomware_host = normalize_hostname(event.host)
+                    first_ransomware_evidence_id = event.evidence_id
 
         affected_hosts, edges, graph_metadata = build_host_interaction_graph(cumulative)
         burst = auth_burst_detected(cumulative)

@@ -108,6 +108,45 @@ def infer_window_start(events: list[CanonicalEvent]) -> datetime:
     return min(parse_ts(event.ts) for event in events)
 
 
+def resolve_window_start(
+    events: list[CanonicalEvent],
+    window_start: str | datetime | None,
+) -> datetime:
+    """Resolve staging origin from an explicit value or earliest canonical event."""
+    if not events:
+        msg = "Cannot resolve window start from empty canonical event list"
+        raise SocbenchTruthError(msg)
+    if window_start is None:
+        return infer_window_start(events)
+    if isinstance(window_start, str):
+        return parse_ts(window_start)
+    return window_start.astimezone(UTC)
+
+
+def window_start_alignment_warning(
+    events: list[CanonicalEvent],
+    window_start: datetime,
+    *,
+    stage_minutes: int = DEFAULT_STAGE_MINUTES,
+) -> str | None:
+    """Return a human-readable warning when staging origin precedes all events."""
+    earliest = min(parse_ts(event.ts) for event in events)
+    if earliest <= window_start:
+        return None
+    first_stage = stage_of(earliest, window_start, stage_minutes=stage_minutes)
+    if first_stage == 0:
+        return None
+    gap_minutes = (earliest - window_start).total_seconds() / 60.0
+    return (
+        f"--window-start ({window_start.strftime('%Y-%m-%dT%H:%M:%SZ')}) is "
+        f"{gap_minutes:.0f} minutes before the earliest canonical event "
+        f"({earliest.strftime('%Y-%m-%dT%H:%M:%SZ')}); stages 0..{first_stage - 1} "
+        "will be empty. Align to scenario time_window.start only when events "
+        "actually begin near that timestamp, or omit --window-start to infer "
+        "from the earliest event."
+    )
+
+
 def stage_of(
     ts: str | datetime,
     window_start: datetime,
