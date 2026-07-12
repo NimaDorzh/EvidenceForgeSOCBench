@@ -12,6 +12,7 @@ from socbench.truth.common import (
     events_through_stage,
     infer_window_start,
     parse_ts,
+    stage_of,
 )
 
 
@@ -82,9 +83,12 @@ class StaticWorldState:
         )
 
     def replan_tail(self, from_stage: int) -> list[CanonicalEvent]:
-        """Return the unchanged tail in static mode."""
-        _ = from_stage
-        return list(self.events)
+        """Return the unchanged tail in static mode (no EF re-run)."""
+        return [
+            event
+            for event in self.events
+            if stage_of(event.ts, self.window_start, stage_minutes=self.stage_minutes) >= from_stage
+        ]
 
 
 def world_state_from_events(

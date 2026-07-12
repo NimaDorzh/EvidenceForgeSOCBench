@@ -87,4 +87,9 @@ requirements.txt
 
 # Sample data (reference only, not tracked)
 sample_data/
+dataset/
+stripped_grader/
+scripts/stripped.ndjson
 docs/PLAN.md
+docs/PLAN_2.md
+docs/PLAN_1.md

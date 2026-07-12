@@ -82,7 +82,23 @@ successors within a 15-minute window (linear growth). See
 **Remaining edge case:** `lateral_shared_source_ip` still pairs logon events
 sharing a source IP across hosts; usually low volume on multi-host scenarios.
 
-## Fox empty early stages when `--window-start` precedes events (fixed 2026-07-12)
+## Interactive WorldState replan evidence_id instability (future work)
+
+**Scope:** optional interactive containment mode (`WorldState.apply` +
+`replan_tail` with EF re-run) is **not implemented in v1**. Static mode uses
+`StaticWorldState` where `apply` is a no-op and `replan_tail` returns the
+unchanged tail slice.
+
+**Known complication for future interactive mode:** a deterministic EF re-run on
+a patched `scenario.yaml` will regenerate tail canonical events with new
+`evidence_id` values. Downstream truth manifests, `__grader_metadata.linked_evidence_ids`,
+and Tiger/Panda stage slices would all need an explicit **evidence-id stability
+policy** (for example stage-prefixed ids plus relinking of pre-intervention
+records). This is documented as future work; do not assume tail ids are stable
+across replans until that policy lands.
+
+See `docs/design/interactive-world-state.md`.
+
 
 **Symptom (pre-fix):** `truth build` with scenario `time_window.start` earlier
 than the first canonical event (e.g. retail at `05:00Z` vs first event
