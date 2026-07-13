@@ -21,6 +21,7 @@ from socbench.capture.canonical_events import (
 from socbench.export_agent import export_agent_tree
 from socbench.integrity.signatures import write_manifest
 from socbench.mutate.augment import AugmentConfig, augment_source_tree
+from socbench.raw.host_logs import convert_staged_host_logs, copy_ef_host_logs
 from socbench.sources import build_sources_from_file
 from socbench.sources.models import SourceBuildConfig
 from socbench.stage.bucketize import bucketize_bundle
@@ -74,6 +75,7 @@ class DatasetBuildConfig:
     stage_minutes: int = 30
     stream_by_stage: bool = True
     mutate_seed: int | None = None
+    native_host_logs: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +114,10 @@ def build_dataset(config: DatasetBuildConfig) -> DatasetBuildResult:
     )
     data_root = staging / "data"
     build_sources_from_file(events_path, data_root, source_config)
+    if config.native_host_logs:
+        copied_host_logs = copy_ef_host_logs(bundle_dir / "data", data_root)
+        if copied_host_logs:
+            logger.info("Copied %s EF host log files into staging", len(copied_host_logs))
 
     if config.mutate_seed is not None:
         augment_source_tree(
@@ -129,15 +135,23 @@ def build_dataset(config: DatasetBuildConfig) -> DatasetBuildResult:
         grader_staging = staging / "grader"
         grader_staging.mkdir(parents=True, exist_ok=True)
         shutil.copy2(events_path, grader_staging / CANONICAL_EVENTS_FILENAME)
+        agent_raw = staging / "agent_raw"
         bucket_result = bucketize_bundle(
             staging,
             events_path=events_path,
-            agent_root=staging / "agent_raw",
+            agent_root=agent_raw,
             window_start=window_start,
             stage_minutes=config.stage_minutes,
         )
         stage_count = bucket_result.stage_count
-        export_agent_tree(staging / "agent_raw", output_dir / "agent")
+        if config.native_host_logs:
+            convert_result = convert_staged_host_logs(agent_raw)
+            if convert_result.converted_files:
+                logger.info(
+                    "Converted %s staged host logs to native binaries",
+                    convert_result.converted_files,
+                )
+        export_agent_tree(agent_raw, output_dir / "agent")
     else:
         export_agent_tree(data_root, output_dir / "agent" / "data")
 
@@ -166,8 +180,8 @@ def build_dataset(config: DatasetBuildConfig) -> DatasetBuildResult:
         encoding="utf-8",
     )
 
-    manifest_path = write_manifest(output_dir)
     shutil.rmtree(staging)
+    manifest_path = write_manifest(output_dir)
 
     return DatasetBuildResult(
         output_dir=output_dir,

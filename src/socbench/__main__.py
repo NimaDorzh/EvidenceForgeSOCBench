@@ -114,6 +114,13 @@ def build_command(
         int | None,
         typer.Option("--mutate-seed", help="Optional augment seed for surface-form mutation"),
     ] = None,
+    native_host_logs: Annotated[
+        bool,
+        typer.Option(
+            "--native-host-logs/--no-native-host-logs",
+            help="Convert EF host XML/syslog to native EVTX/journal binaries",
+        ),
+    ] = False,
 ) -> None:
     """Build a full SOC-bench dataset with DP2-gated agent exports."""
     logging.basicConfig(level=logging.INFO)
@@ -128,6 +135,7 @@ def build_command(
             stage_minutes=stage_minutes,
             stream_by_stage=stream_by_stage,
             mutate_seed=mutate_seed,
+            native_host_logs=native_host_logs,
         )
     )
     console.print(

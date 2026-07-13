@@ -1,0 +1,3 @@
+The file src/socbench/raw/_xml2evtx.py contains code derived from JPCERTCC/xml2evtx
+(https://github.com/JPCERTCC/xml2evtx), Copyright 2023 JPCERT Coordination Center,
+licensed under the BSD-3-Clause license.

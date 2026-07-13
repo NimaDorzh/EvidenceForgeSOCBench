@@ -99,6 +99,60 @@ across replans until that policy lands.
 
 See `docs/design/interactive-world-state.md`.
 
+## Network domain: Zeek/flow-canonical (no raw PCAP in v1)
+
+SOC-bench agent datasets expose network evidence as **Zeek/flow NDJSON**
+(`siem` alerts reference `zeek_conn`; EF bundle `conn.json` remains the
+canonical network source). This is an intentional deviation from the paper's
+Mouse/Tiger wording that assumes a raw `.pcap`.
+
+**Why:** reconstructing PCAP from conn metadata (for example via scapy) produces
+detectable synthetic artifacts — malformed TCP handshakes, template TLS
+ClientHello blobs, and unrealistic inter-packet timing. Agents trained on those
+artifacts learn generator fingerprints instead of incident anomalies, violating
+DP1 (realism / indistinguishability from production data).
+
+**Future work (out of v1 scope):** if raw PCAP becomes a hard acceptance
+requirement, generate it only by running real network daemons in a
+containerized topology at EF generation time — not by post-hoc metadata
+reconstruction. See `docs/worklog/2026-07-12-native-host-logs.md`.
+
+## Native host-log binaries (EVTX / journal)
+
+SOC-bench can emit native Windows `.evtx` and Linux `.journal` artifacts from
+EF text sources (`windows_event_security.xml`, RFC5424 `syslog.log`). Text
+sources are stage-sliced first, then converted per `agent/stage_XX/` directory
+because EVTX and journal containers cannot be safely re-sliced at the binary
+layer.
+
+**External tooling:**
+
+| Dependency | Role | Verified |
+|------------|------|----------|
+| `lxml`, `python-evtx` | EVTX encode/read-back tests | ✅ (`uv sync --extra binary-formats`) |
+| Docker Desktop ≥28.x (running daemon) | Journal import via `quay.io/fedora/fedora:40` | ✅ 28.5.1 (2026-07-12) |
+| WSL + `systemd-journal-remote` | Journal fallback backend | ⚠️ Optional; not verified on this host |
+| Windows `wevtutil qe` | Optional EVTX cross-check | ✅ Win11 26200 |
+| Chainsaw | Optional manual EVTX validation | ❌ Not installed |
+
+| Artifact | Conversion | Verification |
+|----------|------------|--------------|
+| `.evtx` | Pure Python encoder (`socbench.raw`, derived from JPCERT `xml2evtx`) | `python-evtx` round-trip tests; optional [Chainsaw](https://github.com/WithSecure/chainsaw) CLI |
+| `.journal` | Journal Export Format → `systemd-journal-remote` via Docker (preferred) or WSL | `journalctl --file` round-trip tests |
+
+Install optional Python deps: `uv sync --extra binary-formats`. Journal
+conversion requires a **running Docker daemon** (Fedora 40 image) or WSL with
+`systemd-journal-remote`. CI without these backends skips
+`@pytest.mark.binary_formats` journal tests.
+
+Deliverable paths are under `dataset/agent/stage_XX/data/<host>/`; `_staging/`
+is build-time scratch space only and is removed before `MANIFEST.json` is written.
+
+**Windows note:** modern `wevtutil` no longer imports arbitrary Event Viewer XML
+into live channels on all builds. SOC-bench therefore uses the vendored
+`xml2evtx` encoder instead of `wevtutil im` so conversion stays reproducible
+without admin privileges.
+
 
 **Symptom (pre-fix):** `truth build` with scenario `time_window.start` earlier
 than the first canonical event (e.g. retail at `05:00Z` vs first event

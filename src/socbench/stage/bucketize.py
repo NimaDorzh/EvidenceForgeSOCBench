@@ -11,6 +11,7 @@ from typing import Any
 from evidenceforge.utils.paths import safe_write_text
 from socbench.capture.canonical_events import CANONICAL_EVENTS_FILENAME
 from socbench.capture.models import CanonicalEvent
+from socbench.raw.host_logs import bucketize_host_logs
 from socbench.sources.common import file_digest
 from socbench.truth.common import (
     DEFAULT_STAGE_MINUTES,
@@ -111,6 +112,16 @@ def bucketize_bundle(
             stage_digests[f"stage_{stage:02d}"][CANONICAL_EVENTS_FILENAME] = file_digest(
                 canonical_path
             )
+
+    host_log_digests = bucketize_host_logs(
+        data_root,
+        out_root,
+        window_start=origin,
+        stage_minutes=stage_minutes,
+        max_stage=max_stage,
+    )
+    for stage_name, digests in host_log_digests.items():
+        stage_digests.setdefault(stage_name, {}).update(digests)
 
     return BucketizeResult(
         agent_root=out_root,

@@ -293,6 +293,62 @@ See [External Parser Validation](docs/external-parser-validation/README.md)
 for the third-party parser validation quickstart, external-parser harness architecture,
 full-dataset runner command, and failure report details.
 
+### SOC-bench extension (`socbench`)
+
+This fork adds the SOC-bench dataset builder under `src/socbench/` without
+modifying the EF generation core.
+
+```bash
+python -m socbench build --scenario scenarios/colonial-pipeline/scenario.yaml \
+  --seed 42 --tasks fox,goat,mouse,tiger,panda --stream-by-stage \
+  --window-start 2024-06-03T08:00:00Z --out ./dataset/
+python -m socbench validate ./dataset/
+```
+
+**Native host-log binaries (optional Step 7):**
+
+| Output | Source | Tooling |
+|--------|--------|---------|
+| `windows_event_security.evtx` | EF `windows_event_security.xml` | Vendored `xml2evtx` encoder (`socbench.raw`) |
+| `system.journal` | EF RFC5424 `syslog.log` | `systemd-journal-remote` via Docker or WSL |
+
+Install optional verification/conversion deps:
+
+```bash
+uv sync --extra binary-formats
+```
+
+**Runtime dependencies (native host logs):**
+
+| Dependency | Required for | Status (dev host, 2026-07-12) |
+|------------|--------------|-------------------------------|
+| `lxml`, `python-evtx` | EVTX encode + tests | ✅ |
+| Docker Desktop (daemon running) + `quay.io/fedora/fedora:40` | `.journal` conversion | ✅ 28.5.1 |
+| WSL + `systemd-journal-remote` | `.journal` fallback | ⚠️ Optional (not installed here) |
+| Chainsaw | Optional manual EVTX check | ❌ |
+
+Converted artifacts land in `dataset/agent/stage_XX/data/<host>/` (not `_staging/`).
+Build scratch under `_staging/` is deleted before `MANIFEST.json` is written.
+
+Optional manual EVTX validation: [Chainsaw](https://github.com/WithSecure/chainsaw).
+Automated round-trip tests use `python-evtx` and `journalctl --file`.
+
+Network evidence is **Zeek/flow-canonical** (no scapy PCAP reconstruction in v1).
+See `docs/KNOWN_LIMITATIONS.md` and `docs/worklog/2026-07-12-native-host-logs.md`.
+
+Disable native conversion when journal tooling is unavailable (default build
+keeps text EF host logs only):
+
+```bash
+python -m socbench build ... --native-host-logs
+```
+
+Run binary-format tests:
+
+```bash
+uv run pytest tests/socbench/test_binary_formats.py -m binary_formats --no-cov
+```
+
 ### Tech Stack
 
 - Python 3.11+ with [uv](https://docs.astral.sh/uv/)

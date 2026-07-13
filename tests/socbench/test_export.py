@@ -195,11 +195,39 @@ def test_manifest_contains_per_file_and_dataset_hashes(tmp_path: Path) -> None:
             window_start=COLONIAL_WINDOW_START,
         )
     )
-    manifest = build_manifest(out_dir)
+    manifest = json.loads((out_dir / MANIFEST_FILENAME).read_text(encoding="utf-8"))
     assert manifest["dataset_sha256"]
     assert manifest["files"]
     assert "agent/topology.json" in manifest["files"]
     assert any(path.startswith("grader/") for path in manifest["files"])
+    rebuilt = build_manifest(out_dir)
+    assert rebuilt["dataset_sha256"] == manifest["dataset_sha256"]
+    assert rebuilt["files"] == manifest["files"]
+
+
+@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+def test_manifest_excludes_staging_and_paths_exist(tmp_path: Path) -> None:
+    """MANIFEST must describe only deliverable files that remain on disk."""
+    out_dir = tmp_path / "dataset"
+    build_dataset(
+        DatasetBuildConfig(
+            scenario_path=COLONIAL_SCENARIO,
+            output_dir=out_dir,
+            seed=42,
+            window_start=COLONIAL_WINDOW_START,
+            stream_by_stage=True,
+        )
+    )
+    assert not (out_dir / "_staging").exists()
+    manifest = json.loads((out_dir / MANIFEST_FILENAME).read_text(encoding="utf-8"))
+    staging_paths = [path for path in manifest["files"] if path.startswith("_staging/")]
+    assert staging_paths == [], f"staging paths leaked into MANIFEST: {staging_paths[:5]}"
+    missing = [
+        rel
+        for rel in manifest["files"]
+        if not (out_dir / rel).is_file()
+    ]
+    assert missing == [], "MANIFEST references missing files:\n" + "\n".join(missing[:10])
 
 
 @pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")

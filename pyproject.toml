@@ -63,6 +63,10 @@ dev = [
     "ruff>=0.15.20",
     "pre-commit>=4.6.0",
 ]
+binary-formats = [
+    "lxml>=5.0.0",
+    "python-evtx>=0.8.1",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -84,6 +88,7 @@ python_functions = ["test_*"]
 markers = [
     "slow: Tests requiring large dataset generation (100+ users, minutes to run)",
     "external_parser: Tests that run third-party parser containers",
+    "binary_formats: Tests requiring lxml/python-evtx and optional Docker/WSL journal tooling",
 ]
 addopts = [
     "-v",
