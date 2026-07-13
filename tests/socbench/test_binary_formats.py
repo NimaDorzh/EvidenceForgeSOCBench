@@ -28,15 +28,18 @@ from socbench.raw.journal import (
     wsl_journal_remote_available,
 )
 from socbench.truth.common import load_canonical_events, resolve_window_start, stage_of
+from tests.socbench.colonial_fixtures import (
+    COLONIAL_DATA,
+    COLONIAL_EVENTS,
+    COLONIAL_FULL_BUNDLE,
+    COLONIAL_SCENARIO,
+    COLONIAL_WINDOW_START,
+    REQUIRES_COLONIAL_FULL_DATA,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_XML = REPO_ROOT / "tests" / "fixtures" / "eval" / "good" / "windows_event_security.xml"
 FIXTURE_SYSLOG = REPO_ROOT / "tests" / "fixtures" / "eval" / "good" / "syslog.log"
-COLONIAL_DATA = REPO_ROOT / "scenarios" / "colonial-pipeline" / "data"
-COLONIAL_EVENTS = (
-    REPO_ROOT / "scenarios" / "colonial-pipeline" / "grader" / "canonical_events.ndjson"
-)
-COLONIAL_WINDOW_START = "2024-06-03T08:00:00Z"
 
 pytest.importorskip("lxml")
 
@@ -46,9 +49,8 @@ def _journal_backend_available() -> bool:
 
 
 @pytest.mark.binary_formats
+@REQUIRES_COLONIAL_FULL_DATA
 def test_discover_colonial_host_logs() -> None:
-    if not COLONIAL_DATA.is_dir():
-        pytest.skip("colonial EF data missing")
     discovered = discover_host_log_files(COLONIAL_DATA)
     assert any(path.name == "windows_event_security.xml" for path in discovered)
     assert any(path.name == "syslog.log" for path in discovered)
@@ -91,7 +93,7 @@ def test_journal_roundtrip_fixture_fields_match(tmp_path: Path) -> None:
 
 
 @pytest.mark.binary_formats
-@pytest.mark.skipif(not COLONIAL_DATA.is_dir(), reason="colonial EF data missing")
+@REQUIRES_COLONIAL_FULL_DATA
 def test_host_log_stage_slice_is_cumulative(tmp_path: Path) -> None:
     events = load_canonical_events(COLONIAL_EVENTS)
     origin = resolve_window_start(events, COLONIAL_WINDOW_START)
@@ -130,7 +132,7 @@ def test_host_log_stage_slice_is_cumulative(tmp_path: Path) -> None:
 
 @pytest.mark.binary_formats
 @pytest.mark.slow
-@pytest.mark.skipif(not COLONIAL_DATA.is_dir(), reason="colonial EF data missing")
+@REQUIRES_COLONIAL_FULL_DATA
 @pytest.mark.skipif(not _journal_backend_available(), reason="Docker/WSL journal backend unavailable")
 def test_convert_staged_colonial_host_logs(tmp_path: Path) -> None:
     events = load_canonical_events(COLONIAL_EVENTS)

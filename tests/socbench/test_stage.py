@@ -18,12 +18,9 @@ from socbench.stage.bucketize import (
 from socbench.stage.world_state import Intervention, StaticWorldState, WorldState
 from socbench.truth.common import index_by_evidence_id, load_canonical_events, parse_ts, stage_of
 from socbench.truth.panda import build_panda_manifest
+from tests.socbench.colonial_fixtures import COLONIAL_EVENTS, COLONIAL_WINDOW_START
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-COLONIAL_EVENTS = (
-    REPO_ROOT / "scenarios" / "colonial-pipeline" / "grader" / "canonical_events.ndjson"
-)
-COLONIAL_WINDOW_START = "2024-06-03T08:00:00Z"
 
 
 def _colonial_config(**overrides: object) -> SourceBuildConfig:
@@ -110,7 +107,10 @@ def test_static_world_state_slice_through_unchanged() -> None:
     )
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_bucketize_creates_cumulative_stage_directories(tmp_path: Path) -> None:
     bundle = _build_colonial_bundle(tmp_path)
     result = bucketize_bundle(bundle, window_start=COLONIAL_WINDOW_START)
@@ -128,7 +128,10 @@ def test_bucketize_creates_cumulative_stage_directories(tmp_path: Path) -> None:
     assert len(stage_last_alerts) >= len(stage0_alerts)
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_helpdesk_empty_before_min_stage_gate(tmp_path: Path) -> None:
     bundle = _build_colonial_bundle(tmp_path)
     result = bucketize_bundle(bundle, window_start=COLONIAL_WINDOW_START)
@@ -221,7 +224,10 @@ def test_helpdesk_min_stage_gate_suppresses_early_timestamp(tmp_path: Path) -> N
             f"ticket must appear once agent stage {stage} reaches min_stage_gate={min_gate}"
         )
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_cti_user_linked_rows_gate_by_timestamp_only(tmp_path: Path) -> None:
     bundle = _build_colonial_bundle(tmp_path)
     result = bucketize_bundle(bundle, window_start=COLONIAL_WINDOW_START)
@@ -250,7 +256,10 @@ def test_cti_user_linked_rows_gate_by_timestamp_only(tmp_path: Path) -> None:
     assert first_linked["record_id"] not in early_ids
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_bucketize_records_carry_stage_index(tmp_path: Path) -> None:
     bundle = _build_colonial_bundle(tmp_path)
     result = bucketize_bundle(bundle, window_start=COLONIAL_WINDOW_START)
@@ -263,7 +272,10 @@ def test_bucketize_records_carry_stage_index(tmp_path: Path) -> None:
     assert "stage_index" in canonical[0]
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_bucketize_is_deterministic_by_sha256(tmp_path: Path) -> None:
     bundle = _build_colonial_bundle(tmp_path)
     first = bucketize_bundle(bundle, window_start=COLONIAL_WINDOW_START, agent_root=tmp_path / "a1")
@@ -273,7 +285,10 @@ def test_bucketize_is_deterministic_by_sha256(tmp_path: Path) -> None:
     assert _stage_dir_digest(first.agent_root) == _stage_dir_digest(second.agent_root)
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_no_linked_evidence_leaks_into_earlier_agent_stages(tmp_path: Path) -> None:
     bundle = _build_colonial_bundle(tmp_path)
     result = bucketize_bundle(bundle, window_start=COLONIAL_WINDOW_START)
@@ -305,7 +320,10 @@ def test_no_linked_evidence_leaks_into_earlier_agent_stages(tmp_path: Path) -> N
                     )
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_panda_regression_after_world_state_refactor(tmp_path: Path) -> None:
     events = load_canonical_events(COLONIAL_EVENTS)
     state = StaticWorldState.from_events(events, window_start=COLONIAL_WINDOW_START)

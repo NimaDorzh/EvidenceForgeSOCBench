@@ -20,13 +20,9 @@ from socbench.sources import build_sources_from_file
 from socbench.sources.models import SourceBuildConfig
 from socbench.stage.bucketize import bucketize_bundle
 from socbench.validate import validate_dataset
+from tests.socbench.colonial_fixtures import COLONIAL_EVENTS, COLONIAL_SCENARIO, COLONIAL_WINDOW_START
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-COLONIAL_SCENARIO = REPO_ROOT / "scenarios" / "colonial-pipeline" / "scenario.yaml"
-COLONIAL_EVENTS = (
-    REPO_ROOT / "scenarios" / "colonial-pipeline" / "grader" / "canonical_events.ndjson"
-)
-COLONIAL_WINDOW_START = "2024-06-03T08:00:00Z"
 EXPORT_AGENT_PATH = REPO_ROOT / "src" / "socbench" / "export_agent.py"
 
 
@@ -133,7 +129,10 @@ def test_dp2_gate_detects_injected_fields_when_export_disabled(tmp_path: Path) -
     assert violations, "expected DP2 violations when grader fields remain in agent tree"
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_dp2_gate_no_grader_fields_in_agent(tmp_path: Path) -> None:
     """End-to-end DP2 acceptance: full build must leave agent tree clean."""
     out_dir = tmp_path / "dataset"
@@ -156,7 +155,10 @@ def test_dp2_gate_no_grader_fields_in_agent(tmp_path: Path) -> None:
         assert path.name != "canonical_events.ndjson", "canonical events leaked into agent"
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_build_is_deterministic_via_manifest(tmp_path: Path) -> None:
     first = tmp_path / "run1"
     second = tmp_path / "run2"
@@ -184,7 +186,10 @@ def test_build_is_deterministic_via_manifest(tmp_path: Path) -> None:
     assert manifest1["files"] == manifest2["files"]
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_manifest_contains_per_file_and_dataset_hashes(tmp_path: Path) -> None:
     out_dir = tmp_path / "dataset"
     build_dataset(
@@ -205,7 +210,10 @@ def test_manifest_contains_per_file_and_dataset_hashes(tmp_path: Path) -> None:
     assert rebuilt["files"] == manifest["files"]
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_manifest_excludes_staging_and_paths_exist(tmp_path: Path) -> None:
     """MANIFEST must describe only deliverable files that remain on disk."""
     out_dir = tmp_path / "dataset"
@@ -230,7 +238,10 @@ def test_manifest_excludes_staging_and_paths_exist(tmp_path: Path) -> None:
     assert missing == [], "MANIFEST references missing files:\n" + "\n".join(missing[:10])
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_mutated_build_passes_dp2_and_validate(tmp_path: Path) -> None:
     out_dir = tmp_path / "dataset"
     build_dataset(

@@ -15,12 +15,7 @@ from socbench.truth.goat import build_goat_manifest_from_file
 from socbench.truth.mouse import build_mouse_manifest_from_file
 from socbench.truth.panda import build_panda_manifest_from_file
 from socbench.truth.tiger import build_tiger_manifest_from_file
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-COLONIAL_EVENTS = (
-    REPO_ROOT / "scenarios" / "colonial-pipeline" / "grader" / "canonical_events.ndjson"
-)
-COLONIAL_WINDOW_START = "2024-06-03T08:00:00Z"
+from tests.socbench.colonial_fixtures import COLONIAL_EVENTS, COLONIAL_WINDOW_START
 
 TRUTH_PROJECTORS = ("fox", "goat", "mouse", "tiger", "panda")
 
@@ -66,7 +61,10 @@ def _helpdesk_texts(source_root: Path) -> list[str]:
     ]
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_augment_invariant_preserves_truth_projectors_and_linked_evidence_ids(
     tmp_path: Path,
 ) -> None:
@@ -102,7 +100,10 @@ def test_augment_invariant_preserves_truth_projectors_and_linked_evidence_ids(
     assert before_helpdesk != after_helpdesk, "expected helpdesk surface text to change"
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_augment_preserves_grader_linked_evidence_ids(tmp_path: Path) -> None:
     data_root = tmp_path / "data"
     build_sources_from_file(

@@ -12,11 +12,12 @@ from socbench.capture.canonical_events import build_canonical_events
 from socbench.capture.models import CanonicalEvent
 from socbench.stage.world_state import StaticWorldState, world_state_from_events
 from socbench.truth.panda import build_panda_manifest
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-COLONIAL_BUNDLE = REPO_ROOT / "scenarios" / "colonial-pipeline"
-COLONIAL_SCENARIO = COLONIAL_BUNDLE / "scenario.yaml"
-COLONIAL_WINDOW_START = "2024-06-03T08:00:00Z"
+from tests.socbench.colonial_fixtures import (
+    COLONIAL_FULL_BUNDLE,
+    COLONIAL_SCENARIO,
+    COLONIAL_WINDOW_START,
+    REQUIRES_COLONIAL_FULL_DATA,
+)
 
 
 def _event(
@@ -134,12 +135,12 @@ def test_panda_uses_world_state_slice_not_future_events() -> None:
     assert "EVID-late" not in stage0_manifest["stages"][0]["supporting_evidence_ids"]
 
 
-@pytest.mark.skipif(not COLONIAL_SCENARIO.is_file(), reason="colonial scenario missing")
+@REQUIRES_COLONIAL_FULL_DATA
 def test_panda_ignores_ground_truth_labels() -> None:
     scenario = Scenario.model_validate(
         yaml.safe_load(COLONIAL_SCENARIO.read_text(encoding="utf-8"))
     )
-    events = build_canonical_events(COLONIAL_BUNDLE, scenario, seed=42)
+    events = build_canonical_events(COLONIAL_FULL_BUNDLE, scenario, seed=42)
     baseline_state = world_state_from_events(events, window_start=COLONIAL_WINDOW_START)
     baseline = build_panda_manifest(baseline_state, window_start=COLONIAL_WINDOW_START)
 
@@ -152,12 +153,12 @@ def test_panda_ignores_ground_truth_labels() -> None:
     assert redacted["stages"] == baseline["stages"]
 
 
-@pytest.mark.skipif(not COLONIAL_SCENARIO.is_file(), reason="colonial scenario missing")
+@REQUIRES_COLONIAL_FULL_DATA
 def test_colonial_panda_stage_phases_progress() -> None:
     scenario = Scenario.model_validate(
         yaml.safe_load(COLONIAL_SCENARIO.read_text(encoding="utf-8"))
     )
-    events = build_canonical_events(COLONIAL_BUNDLE, scenario, seed=42)
+    events = build_canonical_events(COLONIAL_FULL_BUNDLE, scenario, seed=42)
     state = world_state_from_events(events, window_start=COLONIAL_WINDOW_START)
     manifest = build_panda_manifest(state, window_start=COLONIAL_WINDOW_START)
     phases = [stage["incident_phase"] for stage in manifest["stages"]]

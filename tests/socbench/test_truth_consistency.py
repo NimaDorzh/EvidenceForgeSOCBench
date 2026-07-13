@@ -27,13 +27,16 @@ from socbench.truth.goat import GOAT_MANIFEST_FILENAME, build_goat_manifest_from
 from socbench.truth.mouse import MOUSE_MANIFEST_FILENAME, build_mouse_manifest_from_file
 from socbench.truth.panda import PANDA_MANIFEST_FILENAME, build_panda_manifest_from_file
 from socbench.truth.tiger import TIGER_MANIFEST_FILENAME, build_tiger_manifest, build_tiger_manifest_from_file
+from tests.socbench.colonial_fixtures import (
+    COLONIAL_EVENTS,
+    COLONIAL_FULL_BUNDLE,
+    COLONIAL_SCENARIO,
+    COLONIAL_WINDOW_START,
+    REQUIRES_COLONIAL_FULL_DATA,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TRUTH_DIR = REPO_ROOT / "src" / "socbench" / "truth"
-COLONIAL_BUNDLE = REPO_ROOT / "scenarios" / "colonial-pipeline"
-COLONIAL_SCENARIO = COLONIAL_BUNDLE / "scenario.yaml"
-COLONIAL_EVENTS = COLONIAL_BUNDLE / "grader" / "canonical_events.ndjson"
-COLONIAL_WINDOW_START = "2024-06-03T08:00:00Z"
 
 TRUTH_MANIFEST_FILENAMES = (
     FOX_MANIFEST_FILENAME,
@@ -159,7 +162,10 @@ def test_window_start_alignment_warning_when_origin_precedes_events() -> None:
     assert "earliest canonical event" in warning
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_all_manifest_evidence_ids_resolve() -> None:
     events = load_canonical_events(COLONIAL_EVENTS)
     events_by_id = index_by_evidence_id(events)
@@ -193,19 +199,22 @@ def test_no_truth_module_imports_another() -> None:
     assert not violations, "Truth module import violations:\n" + "\n".join(violations)
 
 
-@pytest.mark.skipif(not COLONIAL_SCENARIO.is_file(), reason="colonial scenario missing")
+@REQUIRES_COLONIAL_FULL_DATA
 def test_forbidden_evidence_ids_empty_source_safe() -> None:
     scenario = Scenario.model_validate(
         yaml.safe_load(COLONIAL_SCENARIO.read_text(encoding="utf-8"))
     )
-    events = build_canonical_events(COLONIAL_BUNDLE, scenario, seed=42)
+    events = build_canonical_events(COLONIAL_FULL_BUNDLE, scenario, seed=42)
     manifest = build_tiger_manifest(events)
 
     assert manifest["forbidden_evidence_ids"] == []
     assert not any(event.kind == "helpdesk" for event in events)
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_truth_build_writes_five_manifests_deterministically(tmp_path: Path) -> None:
     """Unified build produces exactly five task manifests with stable hashes."""
     out_dir = tmp_path / "grader"

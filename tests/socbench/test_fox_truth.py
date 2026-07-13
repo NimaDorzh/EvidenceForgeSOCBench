@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from socbench.capture.models import CanonicalEvent
@@ -21,12 +19,13 @@ from socbench.truth.common import (
     stage_of,
 )
 from socbench.truth.fox import build_fox_manifest, build_fox_manifest_from_file
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-COLONIAL_EVENTS = (
-    REPO_ROOT / "scenarios" / "colonial-pipeline" / "grader" / "canonical_events.ndjson"
+from tests.socbench.colonial_fixtures import (
+    COLONIAL_EVENTS,
+    COLONIAL_FULL_BUNDLE,
+    COLONIAL_SCENARIO,
+    COLONIAL_WINDOW_START,
+    REQUIRES_COLONIAL_FULL_DATA,
 )
-COLONIAL_WINDOW_START = "2024-06-03T08:00:00Z"
 
 
 def _event(
@@ -211,17 +210,15 @@ def test_build_fox_manifest_cumulative_o3() -> None:
     assert stage_two["first_ransomware_evidence_id"] == "EVID-ransom"
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@REQUIRES_COLONIAL_FULL_DATA
 def test_colonial_fox_manifest_progression() -> None:
     import yaml
 
     from evidenceforge.models.scenario import Scenario
     from socbench.capture.canonical_events import build_canonical_events
 
-    scenario_path = REPO_ROOT / "scenarios" / "colonial-pipeline" / "scenario.yaml"
-    bundle_dir = REPO_ROOT / "scenarios" / "colonial-pipeline"
-    scenario = Scenario.model_validate(yaml.safe_load(scenario_path.read_text(encoding="utf-8")))
-    events = build_canonical_events(bundle_dir, scenario, seed=42)
+    scenario = Scenario.model_validate(yaml.safe_load(COLONIAL_SCENARIO.read_text(encoding="utf-8")))
+    events = build_canonical_events(COLONIAL_FULL_BUNDLE, scenario, seed=42)
     manifest = build_fox_manifest(
         events,
         window_start=COLONIAL_WINDOW_START,
@@ -250,7 +247,10 @@ def test_colonial_fox_manifest_progression() -> None:
     assert assumptions["auth_burst_window_minutes"] == AUTH_BURST_WINDOW_MINUTES
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_colonial_stage_of_alignment() -> None:
     events = build_fox_manifest_from_file(COLONIAL_EVENTS, window_start=COLONIAL_WINDOW_START)[
         "stages"
@@ -261,17 +261,15 @@ def test_colonial_stage_of_alignment() -> None:
     assert stage_of("2024-06-03T08:33:35Z", parse_ts(COLONIAL_WINDOW_START)) == 1
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@REQUIRES_COLONIAL_FULL_DATA
 def test_fox_ignores_ground_truth_labels() -> None:
     import yaml
 
     from evidenceforge.models.scenario import Scenario
     from socbench.capture.canonical_events import build_canonical_events
 
-    scenario_path = REPO_ROOT / "scenarios" / "colonial-pipeline" / "scenario.yaml"
-    bundle_dir = REPO_ROOT / "scenarios" / "colonial-pipeline"
-    scenario = Scenario.model_validate(yaml.safe_load(scenario_path.read_text(encoding="utf-8")))
-    events = build_canonical_events(bundle_dir, scenario, seed=42)
+    scenario = Scenario.model_validate(yaml.safe_load(COLONIAL_SCENARIO.read_text(encoding="utf-8")))
+    events = build_canonical_events(COLONIAL_FULL_BUNDLE, scenario, seed=42)
     baseline = build_fox_manifest(events, window_start=COLONIAL_WINDOW_START, stage_minutes=30)
 
     stripped = [

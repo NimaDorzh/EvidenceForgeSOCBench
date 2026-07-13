@@ -21,11 +21,12 @@ from socbench.truth.goat import (
     GOAT_TIME_TOLERANCE_MINUTES,
     build_goat_manifest,
 )
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-COLONIAL_BUNDLE = REPO_ROOT / "scenarios" / "colonial-pipeline"
-COLONIAL_SCENARIO = COLONIAL_BUNDLE / "scenario.yaml"
-COLONIAL_WINDOW_START = "2024-06-03T08:00:00Z"
+from tests.socbench.colonial_fixtures import (
+    COLONIAL_FULL_BUNDLE,
+    COLONIAL_SCENARIO,
+    COLONIAL_WINDOW_START,
+    REQUIRES_COLONIAL_FULL_DATA,
+)
 
 
 def test_extract_encrypt_paths_from_command_line() -> None:
@@ -161,12 +162,12 @@ def test_build_goat_manifest_stage_progression() -> None:
     assert manifest["manifest_thresholds"]["dir_fraction_tolerance"] == GOAT_DIR_FRACTION_TOLERANCE
 
 
-@pytest.mark.skipif(not COLONIAL_SCENARIO.is_file(), reason="colonial scenario missing")
+@REQUIRES_COLONIAL_FULL_DATA
 def test_colonial_goat_manifest() -> None:
     scenario = Scenario.model_validate(
         yaml.safe_load(COLONIAL_SCENARIO.read_text(encoding="utf-8"))
     )
-    events = build_canonical_events(COLONIAL_BUNDLE, scenario, seed=42)
+    events = build_canonical_events(COLONIAL_FULL_BUNDLE, scenario, seed=42)
     manifest = build_goat_manifest(events, window_start=COLONIAL_WINDOW_START, stage_minutes=30)
 
     assert manifest["task"] == "goat"
@@ -188,12 +189,12 @@ def test_colonial_goat_manifest() -> None:
     assert fs01_impact[0]["encrypted_fraction"] == 1.0
 
 
-@pytest.mark.skipif(not COLONIAL_SCENARIO.is_file(), reason="colonial scenario missing")
+@REQUIRES_COLONIAL_FULL_DATA
 def test_goat_ignores_ground_truth_labels() -> None:
     scenario = Scenario.model_validate(
         yaml.safe_load(COLONIAL_SCENARIO.read_text(encoding="utf-8"))
     )
-    events = build_canonical_events(COLONIAL_BUNDLE, scenario, seed=42)
+    events = build_canonical_events(COLONIAL_FULL_BUNDLE, scenario, seed=42)
     baseline = build_goat_manifest(events, window_start=COLONIAL_WINDOW_START, stage_minutes=30)
 
     stripped = [

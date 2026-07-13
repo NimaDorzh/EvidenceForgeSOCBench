@@ -9,10 +9,11 @@ import pytest
 from socbench.capture.canonical_events import finalize_observation
 from socbench.capture.models import CanonicalEvent
 from socbench.capture.output_refs import resolve_output_refs
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-COLONIAL_BUNDLE = REPO_ROOT / "scenarios" / "colonial-pipeline"
-COLONIAL_SCENARIO = COLONIAL_BUNDLE / "scenario.yaml"
+from tests.socbench.colonial_fixtures import (
+    COLONIAL_FULL_BUNDLE,
+    COLONIAL_SCENARIO,
+    REQUIRES_COLONIAL_FULL_DATA,
+)
 
 
 def _event(kind: str, host: str, fields: dict, *, record_id: str = "evt-test#0") -> CanonicalEvent:
@@ -295,10 +296,7 @@ def test_resolve_rdp_session_security_and_ecar_p2(tmp_path: Path) -> None:
     assert refs["ecar"].endswith("#L1")
 
 
-@pytest.mark.skipif(
-    not (COLONIAL_BUNDLE / "data").is_dir() or not any((COLONIAL_BUNDLE / "data").iterdir()),
-    reason="colonial-pipeline data bundle not present",
-)
+@REQUIRES_COLONIAL_FULL_DATA
 def test_colonial_capture_resolver_integration() -> None:
     """End-to-end colonial capture: resolver debt rows should gain refs."""
     import yaml
@@ -309,7 +307,7 @@ def test_colonial_capture_resolver_integration() -> None:
     scenario = Scenario.model_validate(
         yaml.safe_load(COLONIAL_SCENARIO.read_text(encoding="utf-8"))
     )
-    events = build_canonical_events(COLONIAL_BUNDLE, scenario, seed=42)
+    events = build_canonical_events(COLONIAL_FULL_BUNDLE, scenario, seed=42)
     by_id = {event.evidence_id: event for event in events}
 
     expected_observed = {

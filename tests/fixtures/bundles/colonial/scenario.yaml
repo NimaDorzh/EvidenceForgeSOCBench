@@ -1,0 +1,795 @@
+version: "1.0"
+name: colonial-pipeline
+description: |
+  Colonial Pipeline-style enterprise ransomware scenario with compromised VPN access,
+  credential theft, PsExec lateral movement, staged collection, dual-channel exfiltration,
+  shadow-copy deletion, and dual file-server encryption. Designed for SOC-bench truth
+  projection and partial sensor visibility (DP4).
+
+environment:
+  description: |
+    Mid-size energy pipeline operator with remote-access VPN, corporate IT workstations,
+    Windows server estate (AD, mail, dual file servers, staging FTP), and a lightly
+    segmented OT HMI network. Sensor placement intentionally leaves gaps for realistic
+    collection blind spots.
+  domain: "colonial-energy.local"
+
+  timezone:
+    default: "America/New_York"
+
+  users:
+    - username: j.walsh
+      full_name: "James Walsh"
+      email: "james.walsh@colonial-energy.com"
+      persona: executive
+      primary_system: WKS-01
+      enabled: true
+
+    - username: m.chen
+      full_name: "Maria Chen"
+      email: "maria.chen@colonial-energy.com"
+      persona: executive
+      primary_system: WKS-02
+      enabled: true
+
+    - username: r.patel
+      full_name: "Raj Patel"
+      email: "raj.patel@colonial-energy.com"
+      persona: executive
+      primary_system: WKS-03
+      enabled: true
+
+    - username: s.kim
+      full_name: "Sarah Kim"
+      email: "sarah.kim@colonial-energy.com"
+      persona: sysadmin
+      primary_system: WKS-04
+      groups: ["it-admins", "domain-admins"]
+      enabled: true
+
+    - username: d.nguyen
+      full_name: "David Nguyen"
+      email: "david.nguyen@colonial-energy.com"
+      persona: developer
+      primary_system: WKS-04
+      groups: ["it-admins"]
+      enabled: true
+
+    - username: t.morgan
+      full_name: "Tyler Morgan"
+      email: "tyler.morgan@colonial-energy.com"
+      persona: analyst
+      primary_system: WKS-OPS-01
+      groups: ["operations", "vpn-users"]
+      enabled: true
+
+    - username: l.ortiz
+      full_name: "Laura Ortiz"
+      email: "laura.ortiz@colonial-energy.com"
+      persona: analyst
+      primary_system: WKS-OPS-02
+      groups: ["operations"]
+      enabled: true
+
+    - username: p.brown
+      full_name: "Paul Brown"
+      email: "paul.brown@colonial-energy.com"
+      persona: analyst
+      primary_system: OT-HMI-01
+      groups: ["ot-operators"]
+      enabled: true
+
+    - username: n.foster
+      full_name: "Nina Foster"
+      email: "nina.foster@colonial-energy.com"
+      persona: analyst
+      primary_system: OT-HMI-01
+      groups: ["ot-operators"]
+      enabled: true
+
+    - username: a.garcia
+      full_name: "Ana Garcia"
+      email: "ana.garcia@colonial-energy.com"
+      persona: accountant
+      primary_system: WKS-05
+      enabled: true
+
+    - username: b.miller
+      full_name: "Brian Miller"
+      email: "brian.miller@colonial-energy.com"
+      persona: accountant
+      primary_system: WKS-05
+      enabled: true
+
+    - username: c.davis
+      full_name: "Cara Davis"
+      email: "cara.davis@colonial-energy.com"
+      persona: data_analyst
+      primary_system: WKS-06
+      enabled: true
+
+    - username: e.wright
+      full_name: "Eric Wright"
+      email: "eric.wright@colonial-energy.com"
+      persona: developer
+      primary_system: WKS-06
+      enabled: true
+
+    - username: f.lopez
+      full_name: "Felix Lopez"
+      email: "felix.lopez@colonial-energy.com"
+      persona: developer
+      primary_system: WKS-06
+      enabled: true
+
+    - username: g.taylor
+      full_name: "Grace Taylor"
+      email: "grace.taylor@colonial-energy.com"
+      persona: project_manager
+      primary_system: WKS-01
+      enabled: true
+
+    - username: h.anderson
+      full_name: "Henry Anderson"
+      email: "henry.anderson@colonial-energy.com"
+      persona: analyst
+      primary_system: WKS-02
+      enabled: true
+
+    - username: i.martin
+      full_name: "Isabel Martin"
+      email: "isabel.martin@colonial-energy.com"
+      persona: help_desk
+      primary_system: WKS-03
+      enabled: true
+
+    - username: k.thomas
+      full_name: "Kevin Thomas"
+      email: "kevin.thomas@colonial-energy.com"
+      persona: receptionist
+      primary_system: WKS-03
+      enabled: true
+
+    - username: o.jackson
+      full_name: "Olivia Jackson"
+      email: "olivia.jackson@colonial-energy.com"
+      persona: analyst
+      primary_system: WKS-02
+      enabled: true
+
+    - username: q.white
+      full_name: "Quinn White"
+      email: "quinn.white@colonial-energy.com"
+      persona: sales
+      primary_system: WKS-01
+      enabled: true
+
+    - username: u.harris
+      full_name: "Uma Harris"
+      email: "uma.harris@colonial-energy.com"
+      persona: hr
+      primary_system: WKS-05
+      enabled: true
+
+    - username: v.clark
+      full_name: "Victor Clark"
+      email: "victor.clark@colonial-energy.com"
+      persona: marketing
+      primary_system: WKS-06
+      enabled: true
+
+  service_accounts:
+    - svc-backup
+    - svc-scada-read
+    - ftp-staging
+
+  stale_accounts:
+    - username: w.legacy-vpn
+      last_active: "2023-09-14"
+      reason: "Former contractor VPN account still referenced in an old RADIUS group export"
+
+  systems:
+    - hostname: VPN-GW-01
+      ip: "10.60.10.10"
+      os: "Ubuntu 22.04 LTS"
+      type: server
+      services: ["openvpn", "ssh", "dns-client"]
+      roles: ["dns_server"]
+      public_hostnames: ["vpn.colonial-energy.com"]
+
+    - hostname: WKS-01
+      ip: "10.60.20.11"
+      os: "Windows 11 Enterprise"
+      type: workstation
+      assigned_user: j.walsh
+      services: ["dns-client"]
+
+    - hostname: WKS-02
+      ip: "10.60.20.12"
+      os: "Windows 11 Enterprise"
+      type: workstation
+      assigned_user: m.chen
+      services: ["dns-client"]
+
+    - hostname: WKS-03
+      ip: "10.60.20.13"
+      os: "Windows 11 Enterprise"
+      type: workstation
+      assigned_user: r.patel
+      services: ["dns-client"]
+
+    - hostname: WKS-04
+      ip: "10.60.20.14"
+      os: "Windows 11 Enterprise"
+      type: workstation
+      assigned_user: s.kim
+      services: ["dns-client"]
+
+    - hostname: WKS-05
+      ip: "10.60.20.15"
+      os: "Windows 11 Enterprise"
+      type: workstation
+      assigned_user: a.garcia
+      services: ["dns-client"]
+
+    - hostname: WKS-06
+      ip: "10.60.20.16"
+      os: "Windows 11 Enterprise"
+      type: workstation
+      assigned_user: c.davis
+      services: ["dns-client"]
+
+    - hostname: WKS-OPS-01
+      ip: "10.60.20.21"
+      os: "Windows 10 Enterprise"
+      type: workstation
+      assigned_user: t.morgan
+      services: ["dns-client"]
+
+    - hostname: WKS-OPS-02
+      ip: "10.60.20.22"
+      os: "Windows 10 Enterprise"
+      type: workstation
+      assigned_user: l.ortiz
+      services: ["dns-client"]
+
+    - hostname: DC-01
+      ip: "10.60.30.10"
+      os: "Windows Server 2022"
+      type: domain_controller
+      services: ["kerberos", "ldap", "dns"]
+      roles: ["domain_controller", "dns_server"]
+
+    - hostname: MAIL-01
+      ip: "10.60.30.20"
+      os: "Windows Server 2019"
+      type: server
+      services: ["exchange", "dns-client"]
+      roles: ["mail_server"]
+
+    - hostname: FS-01
+      ip: "10.60.30.30"
+      os: "Windows Server 2019"
+      type: server
+      services: ["smb", "dfs", "dns-client"]
+      roles: ["file_server"]
+
+    - hostname: FS-02
+      ip: "10.60.30.31"
+      os: "Windows Server 2019"
+      type: server
+      services: ["smb", "dfs", "dns-client"]
+      roles: ["file_server"]
+
+    - hostname: FTP-01
+      ip: "10.60.30.40"
+      os: "Ubuntu 22.04 LTS"
+      type: server
+      services: ["vsftpd", "ssh", "dns-client"]
+
+    - hostname: OT-HMI-01
+      ip: "10.60.40.10"
+      os: "Windows 10 IoT Enterprise LTSC"
+      type: workstation
+      assigned_user: p.brown
+      services: ["dns-client"]
+
+  network:
+    public_cidrs:
+      - "198.18.50.0/24"
+
+    segments:
+      - name: remote_access
+        cidr: "10.60.10.0/24"
+        description: "VPN concentrator and remote-access edge"
+        exposure: both
+        external_ratio: 0.6
+        systems: [VPN-GW-01]
+
+      - name: corporate_it
+        cidr: "10.60.20.0/24"
+        description: "Corporate workstations and operations endpoints"
+        exposure: internal
+        systems:
+          [WKS-01, WKS-02, WKS-03, WKS-04, WKS-05, WKS-06, WKS-OPS-01, WKS-OPS-02]
+
+      - name: server
+        cidr: "10.60.30.0/24"
+        description: "Core Windows and Linux server estate"
+        exposure: internal
+        systems: [DC-01, MAIL-01, FS-01, FS-02, FTP-01]
+
+      - name: OT
+        cidr: "10.60.40.0/24"
+        description: "OT HMI segment with incomplete isolation from IT servers"
+        exposure: internal
+        systems: [OT-HMI-01]
+
+    sensors:
+      - type: network
+        name: corp-core-span
+        hostname: ZEEK-CORP-SPAN
+        monitoring_segments: [corporate_it]
+        direction: bidirectional
+        placement: span
+        log_formats: [zeek]
+        description: "Core SPAN on corporate IT VLAN — east-west workstation traffic only"
+
+      - type: network
+        name: perimeter-tap
+        hostname: ZEEK-PERIM-TAP
+        monitoring_segments: [remote_access, server]
+        direction: bidirectional
+        placement: tap
+        log_formats: [zeek]
+        description: "Perimeter TAP for VPN ingress and north-south server traffic"
+
+      - type: ids
+        name: perimeter-ids
+        hostname: IDS-PERIM-01
+        monitoring_segments: [remote_access, server]
+        direction: inbound
+        placement: tap
+        log_formats: [snort_alert]
+        description: "Perimeter IDS on inbound VPN and server-facing traffic"
+
+      - type: firewall
+        name: perimeter-fw
+        hostname: ASA-PERIM-01
+        monitoring_segments: [remote_access, corporate_it, server, OT]
+        direction: bidirectional
+        placement: tap
+        log_formats: [cisco_asa]
+        interfaces:
+          remote_access: outside
+          corporate_it: inside
+          server: dmz
+          OT: ot
+        default_action: deny
+        deny_ratio: 1.8
+        threat_detection_rate: 12
+        nat_rules:
+          - type: dynamic_pat
+            src: [corporate_it, server]
+            mapped_ip: "198.18.50.1"
+        policy:
+          - {src: external, dst: remote_access, ports: [1194, 443, 22], action: permit}
+          - {src: remote_access, dst: corporate_it, ports: [3389, 445, 5985], action: permit}
+          - {src: corporate_it, dst: server, ports: [53, 88, 389, 445, 636, 3268], action: permit}
+          - {src: server, dst: server, ports: [53, 88, 389, 445, 21, 22], action: permit}
+          - {src: server, dst: OT, ports: [445, 3389, 135], action: permit}
+          - {src: corporate_it, dst: external, ports: [80, 443, 53], action: permit}
+          - {src: server, dst: external, ports: [21, 443, 53], action: permit}
+          - {src: OT, dst: server, ports: [445, 3389], action: permit}
+
+personas:
+  - name: executive
+    description: "Pipeline leadership with administrative access to file shares and mail"
+    typical_activities:
+      - "Review operational dashboards and executive reports"
+      - "Email coordination with field offices"
+      - "Access shared governance documents"
+    work_hours: "7am-6pm"
+    application_usage: ["Microsoft Office", "Chrome", "Outlook"]
+    risk_profile: medium
+
+  - name: sysadmin
+    description: "IT administrators managing AD, servers, and remote support"
+    typical_activities:
+      - "Remote administration of servers and workstations"
+      - "PowerShell scripting and patch management"
+      - "Review security and system event logs"
+    work_hours: "7am-5pm"
+    application_usage: ["PowerShell", "Remote Desktop", "Event Viewer", "Chrome"]
+    risk_profile: high
+
+  - name: analyst
+    description: "Operations and OT analysts monitoring pipeline telemetry"
+    typical_activities:
+      - "Review SCADA-adjacent dashboards and shift logs"
+      - "Remote access to operations workstations"
+      - "File share access for runbooks and procedures"
+    work_hours: "6am-10pm"
+    application_usage: ["Chrome", "Excel", "Remote Desktop"]
+    risk_profile: medium
+
+  - name: developer
+    description: "Engineering staff building integrations and automation"
+    typical_activities:
+      - "Script development and CI tooling"
+      - "Database and API connectivity tests"
+      - "Git and package management"
+    work_hours: "8am-6pm"
+    application_usage: ["VS Code", "PowerShell", "Chrome", "Git"]
+    risk_profile: medium
+
+  - name: accountant
+    description: "Finance staff processing invoices and regulatory filings"
+    typical_activities:
+      - "Spreadsheet analysis and ERP access"
+      - "Email coordination with vendors"
+      - "File server access for financial records"
+    work_hours: "8am-5pm"
+    application_usage: ["Excel", "Outlook", "Chrome"]
+    risk_profile: low
+
+  - name: data_analyst
+    description: "Reporting analysts querying operational and financial data"
+    typical_activities:
+      - "Database queries and report generation"
+      - "Shared drive access for exports"
+      - "Email distribution of dashboards"
+    work_hours: "8am-5pm"
+    application_usage: ["Excel", "Power BI", "Chrome"]
+    risk_profile: low
+
+  - name: project_manager
+    description: "Project coordinators tracking capital projects"
+    typical_activities:
+      - "Document review and scheduling"
+      - "SharePoint and file share usage"
+      - "Vendor email coordination"
+    work_hours: "8am-6pm"
+    application_usage: ["Microsoft Office", "Chrome"]
+    risk_profile: low
+
+  - name: help_desk
+    description: "Service desk technicians supporting end users"
+    typical_activities:
+      - "Ticket triage and password resets"
+      - "Remote assistance sessions"
+      - "Knowledge base updates"
+    work_hours: "7am-7pm"
+    application_usage: ["Remote Desktop", "Chrome", "Outlook"]
+    risk_profile: medium
+
+  - name: receptionist
+    description: "Front-office staff with light system access"
+    typical_activities:
+      - "Scheduling and visitor management"
+      - "Email and phone coordination"
+    work_hours: "8am-5pm"
+    application_usage: ["Outlook", "Chrome"]
+    risk_profile: low
+
+  - name: sales
+    description: "Commercial staff accessing customer records"
+    typical_activities:
+      - "CRM and contract document review"
+      - "Email with external partners"
+    work_hours: "8am-6pm"
+    application_usage: ["Chrome", "Outlook", "Excel"]
+    risk_profile: low
+
+  - name: hr
+    description: "Human resources staff with personnel data access"
+    typical_activities:
+      - "Personnel file review"
+      - "Benefits and payroll coordination"
+    work_hours: "8am-5pm"
+    application_usage: ["Outlook", "Excel", "Chrome"]
+    risk_profile: low
+
+  - name: marketing
+    description: "Marketing staff publishing collateral and campaigns"
+    typical_activities:
+      - "Content management and social publishing"
+      - "Vendor coordination"
+    work_hours: "8am-6pm"
+    application_usage: ["Chrome", "Canva", "Outlook"]
+    risk_profile: low
+
+time_window:
+  start: "2024-06-03T08:00:00Z"
+  duration: "4h"
+  warmup: "1h"
+
+baseline_activity:
+  description: |
+    Normal Monday pipeline operations: VPN reconnects for remote operators, finance
+    reporting, IT maintenance windows, mail flow, backup traffic to file servers,
+    and modest suspicious background noise across corporate and server segments.
+  intensity: high
+  variation: high
+  suspicious_noise: medium
+  traffic_rates:
+    web: low
+    user_activity: medium
+    persona_connections: low
+    smb_interval: low
+
+observation_profile: enterprise_standard
+logon_grace_period: "45m"
+
+storyline:
+  # Step 1 (+0:03) — compromised VPN authentication
+  - id: evt-001
+    time: "+3m"
+    actor: t.morgan
+    system: VPN-GW-01
+    activity: "Attacker authenticates to corporate VPN using compromised operations account"
+    events:
+      - type: connection
+        source_ip: "198.18.50.33"
+        dst_ip: "10.60.10.10"
+        dst_port: 1194
+        service: ssl
+        technique: "T1133 - External Remote Services"
+        description: "VPN session establishment from external attacker IP"
+      - type: ssh_session
+        source_ip: "198.18.50.33"
+        technique: "T1078 - Valid Accounts"
+        description: "Successful VPN portal/administrative session using stolen credentials"
+
+  # Step 2 (+0:18) — domain and share reconnaissance
+  - id: evt-002
+    time: "+18m"
+    actor: t.morgan
+    system: WKS-OPS-01
+    activity: "Attacker enumerates Active Directory trusts and visible file servers"
+    events:
+      - type: rdp_session
+        source_ip: "10.60.10.10"
+        technique: "T1078 - Valid Accounts"
+        description: "RDP pivot from VPN concentrator to operations workstation"
+      - type: process
+        process_name: "C:\\Windows\\System32\\nltest.exe"
+        command_line: "nltest /dclist:colonial-energy"
+        technique: "T1018 - Remote System Discovery"
+        description: "Domain controller enumeration via nltest"
+      - type: process
+        process_name: "C:\\Windows\\System32\\net.exe"
+        command_line: "net view /domain:colonial-energy"
+        technique: "T1087 - Account Discovery"
+        description: "Domain-visible resource enumeration"
+
+  # Step 3 (+0:34) — LSASS credential access
+  - id: evt-003
+    time: "+34m"
+    actor: t.morgan
+    system: WKS-OPS-01
+    activity: "Attacker dumps credentials from LSASS using bundled tooling"
+    events:
+      - type: process
+        process_name: "C:\\Windows\\Temp\\procdump64.exe"
+        command_line: "procdump64.exe -accepteula -ma lsass.exe C:\\Windows\\Temp\\ops-lsass.dmp"
+        technique: "T1003.001 - OS Credential Dumping: LSASS Memory"
+        description: "LSASS memory dump staged on the operations workstation"
+      - type: create_remote_thread
+        target_process: "lsass.exe"
+        technique: "T1003.001 - OS Credential Dumping: LSASS Memory"
+        description: "In-process credential access against LSASS"
+
+  # Step 4a (+0:46) — PsExec remote execution from operations workstation
+  - id: evt-004
+    time: "+46m"
+    actor: t.morgan
+    system: WKS-OPS-01
+    activity: "Attacker launches PsExec against the primary file server"
+    events:
+      - type: process
+        process_name: "C:\\Windows\\Temp\\PsExec.exe"
+        command_line: "PsExec.exe \\\\FS-01 -accepteula -s cmd.exe /c whoami"
+        technique: "T1569.002 - System Services: Service Execution"
+        description: "PsExec remote execution probe against primary file server"
+
+  # Step 4b (+0:47) — PsExec helper service on target file server
+  - id: evt-004b
+    time: "+47m"
+    actor: t.morgan
+    system: FS-01
+    activity: "PsExec installs its remote helper service on FS-01"
+    events:
+      - type: service_installed
+        service_name: "PSEXESVC"
+        service_file_name: "C:\\Windows\\PSEXESVC.exe"
+        service_account: "LocalSystem"
+        technique: "T1569.002 - System Services: Service Execution"
+        description: "Remote PsExec helper service installed on target host"
+
+  # Step 5a (+0:52) — SMB admin-auth to FS-01
+  - id: evt-005
+    time: "+52m"
+    actor: t.morgan
+    system: FS-01
+    activity: "Attacker uses recovered admin credentials for SMB access to FS-01"
+    event_spacing:
+      mode: automated
+      min_delay: "1s"
+      max_delay: "4s"
+    events:
+      - type: explicit_credentials
+        target_username: "COLONIAL-ENERGY\\s.kim"
+        target_server: "FS-01"
+        process_name: "C:\\Windows\\System32\\net.exe"
+        source_ip: "10.60.20.21"
+        technique: "T1021.002 - Remote Services: SMB/Windows Admin Shares"
+        description: "Explicit credential use for administrative share access to FS-01"
+      - type: logon
+        source_ip: "10.60.20.21"
+        logon_type: 3
+        technique: "T1021.002 - Remote Services: SMB/Windows Admin Shares"
+        description: "Network logon on FS-01 using stolen domain admin context"
+
+  # Step 5b (+0:54) — SMB admin-auth to FS-02
+  - id: evt-005b
+    time: "+54m"
+    actor: t.morgan
+    system: FS-02
+    activity: "Attacker extends SMB administrative access to FS-02"
+    events:
+      - type: logon
+        source_ip: "10.60.20.21"
+        logon_type: 3
+        technique: "T1021.002 - Remote Services: SMB/Windows Admin Shares"
+        description: "Network logon on FS-02 using stolen domain admin context"
+
+  # Step 6a (+1:10) — archive sensitive shares on FS-01
+  - id: evt-006a
+    time: "+1h10m"
+    actor: t.morgan
+    system: FS-01
+    activity: "Attacker archives finance and SCADA-adjacent documents from FS-01"
+    events:
+      - type: process
+        process_name: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+        command_line: >-
+          powershell.exe -NoProfile -Command "Compress-Archive -Path
+          \\\\FS-01\\Finance,\\\\FS-01\\Engineering\\SCADA-Exports -DestinationPath
+          C:\\Windows\\Temp\\stage-fs01.zip -Force"
+        technique: "T1560.001 - Archive Collected Data: Archive via Utility"
+        description: "Bulk archive of high-value shares on FS-01"
+      - type: process
+        process_name: "C:\\Windows\\System32\\xcopy.exe"
+        command_line: "xcopy C:\\Windows\\Temp\\stage-fs01.zip \\\\FS-01\\Staging\\ /Y"
+        technique: "T1005 - Data from Local System"
+        description: "Archive copied into staging directory on FS-01"
+
+  # Step 6b (+1:18) — copy staged archive to Linux FTP staging server
+  - id: evt-006b
+    time: "+1h18m"
+    actor: t.morgan
+    system: FS-01
+    activity: "Attacker transfers staged archive to internal FTP staging server"
+    events:
+      - type: connection
+        dst_ip: "10.60.30.40"
+        dst_port: 21
+        service: ftp
+        technique: "T1048 - Exfiltration Over Alternative Protocol"
+        description: "FTP control connection from FS-01 staging host to FTP-01"
+      - type: process
+        process_name: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+        command_line: >-
+          powershell.exe -NoProfile -Command "$client = New-Object Net.WebClient;
+          $client.UploadFile('ftp://10.60.30.40/incoming/stage-fs01.zip',
+          'C:\\Windows\\Temp\\stage-fs01.zip')"
+        technique: "T1005 - Data from Local System"
+        description: "Staged archive uploaded to FTP-01 incoming directory"
+
+  # Step 7 (+1:36) — dual-channel exfiltration
+  - id: evt-007
+    time: "+1h36m"
+    actor: ftp-staging
+    system: FTP-01
+    activity: "Attacker exfiltrates staged archive over FTP and HTTPS to external infrastructure"
+    events:
+      - type: connection
+        source_ip: "10.60.30.40"
+        dst_ip: "203.0.113.88"
+        dst_port: 21
+        service: ftp
+        orig_bytes: 524288000
+        resp_bytes: 4096
+        technique: "T1048.003 - Exfiltration Over Alternative Protocol: Exfiltration Over Unencrypted Non-C2 Protocol"
+        description: "Large outbound FTP transfer of staged archive"
+      - type: connection
+        source_ip: "10.60.30.40"
+        dst_ip: "203.0.113.90"
+        dst_port: 443
+        hostname: "cdn-pipeline-updates.com"
+        service: ssl
+        orig_bytes: 262144000
+        resp_bytes: 8192
+        technique: "T1567.002 - Exfiltration Over Web Service: Exfiltration to Cloud Storage"
+        description: "Secondary HTTPS exfiltration channel to attacker-controlled endpoint"
+
+  # Step 8 (+2:00) — delete volume shadow copies
+  - id: evt-008
+    time: "+2h"
+    actor: t.morgan
+    system: FS-01
+    activity: "Attacker deletes volume shadow copies before encryption"
+    events:
+      - type: process
+        process_name: "C:\\Windows\\System32\\vssadmin.exe"
+        command_line: "vssadmin.exe delete shadows /all /quiet"
+        technique: "T1490 - Inhibit System Recovery"
+        description: "Shadow copy deletion on primary file server"
+
+  # Step 9a (+2:06) — encrypt FS-01
+  - id: evt-009a
+    time: "+2h6m"
+    actor: t.morgan
+    system: FS-01
+    activity: "Ransomware encryptor deployed against FS-01 shares"
+    events:
+      - type: process
+        process_name: "C:\\ProgramData\\darkside_svc.exe"
+        command_line: >-
+          C:\\ProgramData\\darkside_svc.exe --encrypt \\\\FS-01\\Finance
+          \\\\FS-01\\Engineering \\\\FS-01\\HR --key-id 0x733100
+        technique: "T1486 - Data Encrypted for Impact"
+        description: "Mass file encryption on FS-01 shares"
+
+  # Step 9b (+2:11) — encrypt FS-02
+  - id: evt-009b
+    time: "+2h11m"
+    actor: t.morgan
+    system: FS-02
+    activity: "Ransomware encryptor deployed against FS-02 departmental shares"
+    events:
+      - type: process
+        process_name: "C:\\ProgramData\\darkside_svc.exe"
+        command_line: >-
+          C:\\ProgramData\\darkside_svc.exe --encrypt \\\\FS-02\\Operations
+          \\\\FS-02\\Contracts --key-id 0x733100
+        technique: "T1486 - Data Encrypted for Impact"
+        description: "Mass file encryption on FS-02 shares"
+
+red_herrings:
+  - id: rh-001
+    time: "+1h5m"
+    actor: s.kim
+    system: FS-02
+    activity: "Scheduled backup verification by IT administrator"
+    explanation: "Legitimate backup agent health check outside the primary backup window"
+    events:
+      - type: logon
+        source_ip: "10.60.20.14"
+        logon_type: 3
+      - type: process
+        process_name: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+        command_line: "powershell.exe -NoProfile -Command Get-SmbShare"
+
+  - id: rh-002
+    time: "+1h50m"
+    actor: p.brown
+    system: OT-HMI-01
+    activity: "OT operator reconnects to HMI after overnight maintenance"
+    explanation: "Expected OT shift handoff activity; not attacker-related"
+    events:
+      - type: logon
+        logon_type: 2
+
+output:
+  logs:
+    - format: windows
+    - format: zeek
+    - format: ecar
+    - format: syslog
+    - format: bash_history
+    - format: snort_alert
+    - format: cisco_asa
+  destination: scenarios/colonial-pipeline
+  compression: false

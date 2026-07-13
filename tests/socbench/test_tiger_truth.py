@@ -18,10 +18,11 @@ from socbench.truth.tiger import (
     build_tiger_manifest,
     score_graph_edit_distance,
 )
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-COLONIAL_BUNDLE = REPO_ROOT / "scenarios" / "colonial-pipeline"
-COLONIAL_SCENARIO = COLONIAL_BUNDLE / "scenario.yaml"
+from tests.socbench.colonial_fixtures import (
+    COLONIAL_FULL_BUNDLE,
+    COLONIAL_SCENARIO,
+    REQUIRES_COLONIAL_FULL_DATA,
+)
 
 
 def _edge_rules(manifest: dict) -> set[tuple[str, str]]:
@@ -191,12 +192,12 @@ def test_lateral_logons_are_contextual_not_verifiable() -> None:
     assert ("auth_session_action", "verifiable") not in _edge_rules(manifest)
 
 
-@pytest.mark.skipif(not COLONIAL_SCENARIO.is_file(), reason="colonial scenario missing")
+@REQUIRES_COLONIAL_FULL_DATA
 def test_colonial_tiger_has_non_empty_verifiable_core() -> None:
     scenario = Scenario.model_validate(
         yaml.safe_load(COLONIAL_SCENARIO.read_text(encoding="utf-8"))
     )
-    events = build_canonical_events(COLONIAL_BUNDLE, scenario, seed=42)
+    events = build_canonical_events(COLONIAL_FULL_BUNDLE, scenario, seed=42)
     manifest = build_tiger_manifest(events)
 
     rules = _edge_rules(manifest)
@@ -208,13 +209,13 @@ def test_colonial_tiger_has_non_empty_verifiable_core() -> None:
     assert manifest["o3_initial_entrypoint"]["host"] == "VPN-GW-01"
 
 
-@pytest.mark.skipif(not COLONIAL_SCENARIO.is_file(), reason="colonial scenario missing")
+@REQUIRES_COLONIAL_FULL_DATA
 def test_colonial_process_parent_child_rule_has_no_instances() -> None:
     """process_parent_child is valid but unused on Colonial — sibling tools, not tree edges."""
     scenario = Scenario.model_validate(
         yaml.safe_load(COLONIAL_SCENARIO.read_text(encoding="utf-8"))
     )
-    events = build_canonical_events(COLONIAL_BUNDLE, scenario, seed=42)
+    events = build_canonical_events(COLONIAL_FULL_BUNDLE, scenario, seed=42)
     manifest = build_tiger_manifest(events)
     parent_child = [
         edge for edge in manifest["edges"] if edge["rule"] == "process_parent_child"
@@ -294,12 +295,12 @@ def test_tiger_verifiable_core_survives_high_contextual_noise() -> None:
     assert score_without_core > score_with_core * 2
 
 
-@pytest.mark.skipif(not COLONIAL_SCENARIO.is_file(), reason="colonial scenario missing")
+@REQUIRES_COLONIAL_FULL_DATA
 def test_tiger_ignores_ground_truth_labels() -> None:
     scenario = Scenario.model_validate(
         yaml.safe_load(COLONIAL_SCENARIO.read_text(encoding="utf-8"))
     )
-    events = build_canonical_events(COLONIAL_BUNDLE, scenario, seed=42)
+    events = build_canonical_events(COLONIAL_FULL_BUNDLE, scenario, seed=42)
     baseline = build_tiger_manifest(events)
     stripped = [
         event.model_copy(update={"phase": None, "attack": [], "actor": ""}) for event in events

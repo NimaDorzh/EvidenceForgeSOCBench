@@ -77,6 +77,14 @@ command ownership, Windows maintenance cadence/runtime, and source-aware LSASS
 call traces. Keep further per-loop or per-PR details in worklogs or PR
 descriptions.
 
+### SOC-bench Backlog
+
+- [ ] **SOC-bench:** Host colonial Pipeline `data/` (~73 MB EF output) via Git LFS
+  (or CI artifact cache) so `@REQUIRES_COLONIAL_FULL_DATA` tests run on clean
+  checkout without local `eforge generate`. Verify LFS quota/billing on hosting
+  before enabling. Committed minimal fixture:
+  `tests/fixtures/bundles/colonial/`; see `tests/fixtures/bundles/README.md`.
+
 ### Correctness and Realism Backlog
 
 - [ ] **P1** Add source-side file-read, archive, browser-upload, or

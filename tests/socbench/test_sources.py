@@ -24,12 +24,9 @@ from socbench.sources.siem import build_siem_source
 from socbench.sources.text import LlmTextCache, render_template_text
 from socbench.sources.vss import build_vss_source
 from socbench.truth.common import index_by_evidence_id, is_vss_delete_event, parse_ts, resolve_window_start
+from tests.socbench.colonial_fixtures import COLONIAL_EVENTS, COLONIAL_WINDOW_START
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-COLONIAL_EVENTS = (
-    REPO_ROOT / "scenarios" / "colonial-pipeline" / "grader" / "canonical_events.ndjson"
-)
-COLONIAL_WINDOW_START = "2024-06-03T08:00:00Z"
 
 
 def _colonial_config(**overrides: object) -> SourceBuildConfig:
@@ -58,7 +55,10 @@ def _linked_ids(record: dict[str, object]) -> list[str]:
     return [str(item) for item in linked]
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_vss_source_links_canonical_and_duplicates_process_telemetry(tmp_path: Path) -> None:
     events = load_events(COLONIAL_EVENTS)
     data_root = tmp_path / "data"
@@ -84,7 +84,10 @@ def test_vss_source_links_canonical_and_duplicates_process_telemetry(tmp_path: P
         assert is_vss_delete_event(events_by_id[linked[0]])
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_helpdesk_tickets_are_late_and_stage_gated(tmp_path: Path) -> None:
     events = load_events(COLONIAL_EVENTS)
     data_root = tmp_path / "data"
@@ -109,7 +112,10 @@ def test_helpdesk_tickets_are_late_and_stage_gated(tmp_path: Path) -> None:
         assert metadata["latency_applied_ms"] >= 60_000
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_cti_trap_feeds_have_no_attack_evidence_ids(tmp_path: Path) -> None:
     events = load_events(COLONIAL_EVENTS)
     data_root = tmp_path / "data"
@@ -129,7 +135,10 @@ def test_cti_trap_feeds_have_no_attack_evidence_ids(tmp_path: Path) -> None:
         assert not _linked_ids(row)
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_cti_trap_timestamps_are_pre_scenario_and_deterministic(tmp_path: Path) -> None:
     events = load_events(COLONIAL_EVENTS)
     config = _colonial_config()
@@ -156,7 +165,10 @@ def test_cti_trap_timestamps_are_pre_scenario_and_deterministic(tmp_path: Path) 
         assert ts < origin, "trap IOC timestamps must predate the scenario window"
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_cti_relevant_timestamps_respect_forward_latency_budget(tmp_path: Path) -> None:
     from datetime import timedelta
 
@@ -177,7 +189,10 @@ def test_cti_relevant_timestamps_respect_forward_latency_budget(tmp_path: Path) 
         assert origin <= ts <= horizon
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_hostmetrics_excluded_hosts_documented_and_omitted(tmp_path: Path) -> None:
     events = load_events(COLONIAL_EVENTS)
     data_root = tmp_path / "data"
@@ -197,7 +212,10 @@ def test_hostmetrics_excluded_hosts_documented_and_omitted(tmp_path: Path) -> No
     assert any(_linked_ids(row) for row in spike_rows)
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_siem_latency_fp_fn_rules(tmp_path: Path) -> None:
     events = load_events(COLONIAL_EVENTS)
     data_root = tmp_path / "data"
@@ -226,7 +244,10 @@ def test_siem_latency_fp_fn_rules(tmp_path: Path) -> None:
     assert xdr_rows
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_siem_false_positive_timestamps_stay_within_scenario_window(tmp_path: Path) -> None:
     events = load_events(COLONIAL_EVENTS)
     config = _colonial_config()
@@ -314,7 +335,10 @@ def test_llm_cache_enforces_reproducibility(tmp_path: Path) -> None:
     assert cache_path.is_file()
 
 
-@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+@pytest.mark.skipif(
+    not COLONIAL_EVENTS.is_file(),
+    reason="committed colonial fixture missing: tests/fixtures/bundles/colonial/",
+)
 def test_all_sources_build_deterministically(tmp_path: Path) -> None:
     def build_and_digest(root: Path) -> dict[str, str]:
         build_sources_from_file(COLONIAL_EVENTS, root / "data", _colonial_config())

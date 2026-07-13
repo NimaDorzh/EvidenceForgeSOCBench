@@ -17,10 +17,7 @@ from socbench.validate import (
     validate_helpdesk_not_positive_evidence,
     validate_tiger_verifiable_edges_reconstructible,
 )
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-COLONIAL_SCENARIO = REPO_ROOT / "scenarios" / "colonial-pipeline" / "scenario.yaml"
-COLONIAL_WINDOW_START = "2024-06-03T08:00:00Z"
+from tests.socbench.colonial_fixtures import COLONIAL_SCENARIO, COLONIAL_WINDOW_START
 
 
 @pytest.fixture(name="built_dataset")

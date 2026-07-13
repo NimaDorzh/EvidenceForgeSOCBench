@@ -8,12 +8,17 @@ import pytest
 
 from socbench.export_dataset import DatasetBuildConfig, build_dataset
 from socbench.validate import validate_agent_stage_count_aligned, validate_dataset
+from tests.socbench.colonial_fixtures import (
+    COLONIAL_FIXTURE_BUNDLE,
+    require_committed_colonial_fixture,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUNDLE_FIXTURES = REPO_ROOT / "tests" / "fixtures" / "bundles"
 COMMITTED_BUNDLE_DIRS = (
     BUNDLE_FIXTURES / "retail",
     BUNDLE_FIXTURES / "branch-office",
+    COLONIAL_FIXTURE_BUNDLE,
 )
 
 NON_COLONIAL_BUILD_CASES = (
@@ -46,10 +51,11 @@ def _require_committed_bundle(bundle_dir: Path) -> None:
         )
 
 
-def test_non_colonial_regression_fixtures_are_committed() -> None:
+def test_committed_bundle_fixtures_are_present() -> None:
     """Guard against silent CI skip when bundle fixtures are missing from checkout."""
     for bundle_dir in COMMITTED_BUNDLE_DIRS:
         _require_committed_bundle(bundle_dir)
+    require_committed_colonial_fixture()
 
 
 @pytest.mark.parametrize(("bundle_dir", "window_start"), NON_COLONIAL_BUILD_CASES)

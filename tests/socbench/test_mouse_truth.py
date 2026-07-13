@@ -15,18 +15,19 @@ from socbench.truth.mouse import (
     MOUSE_VOLUME_TOLERANCE_GB,
     build_mouse_manifest,
 )
+from tests.socbench.colonial_fixtures import (
+    COLONIAL_FULL_BUNDLE,
+    COLONIAL_SCENARIO,
+    REQUIRES_COLONIAL_FULL_DATA,
+)
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-COLONIAL_BUNDLE = REPO_ROOT / "scenarios" / "colonial-pipeline"
-COLONIAL_SCENARIO = COLONIAL_BUNDLE / "scenario.yaml"
 
-
-@pytest.mark.skipif(not COLONIAL_SCENARIO.is_file(), reason="colonial scenario missing")
+@REQUIRES_COLONIAL_FULL_DATA
 def test_colonial_mouse_exfil_manifest() -> None:
     scenario = Scenario.model_validate(
         yaml.safe_load(COLONIAL_SCENARIO.read_text(encoding="utf-8"))
     )
-    events = build_canonical_events(COLONIAL_BUNDLE, scenario, seed=42)
+    events = build_canonical_events(COLONIAL_FULL_BUNDLE, scenario, seed=42)
     manifest = build_mouse_manifest(events)
 
     assert manifest["exfil_happens"] is True
@@ -109,12 +110,12 @@ def test_mouse_uses_gt_fields_regardless_of_observation_status() -> None:
     assert set(manifest["evidence_ids"]["exfiltration"]) == {"EVID-observed", "EVID-partial"}
 
 
-@pytest.mark.skipif(not COLONIAL_SCENARIO.is_file(), reason="colonial scenario missing")
+@REQUIRES_COLONIAL_FULL_DATA
 def test_mouse_ignores_ground_truth_labels() -> None:
     scenario = Scenario.model_validate(
         yaml.safe_load(COLONIAL_SCENARIO.read_text(encoding="utf-8"))
     )
-    events = build_canonical_events(COLONIAL_BUNDLE, scenario, seed=42)
+    events = build_canonical_events(COLONIAL_FULL_BUNDLE, scenario, seed=42)
     baseline = build_mouse_manifest(events)
 
     stripped = [
