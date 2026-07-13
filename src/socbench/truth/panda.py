@@ -87,7 +87,13 @@ def build_panda_manifest(
                 "recommended_actions": recommended_actions,
                 "action_targets": action_targets,
                 "premature_containment_trap": _premature_containment_trap(phase),
-                "supporting_evidence_ids": _supporting_evidence_ids(cumulative, phase),
+                "supporting_evidence_ids": _supporting_evidence_ids(
+                    cumulative,
+                    phase,
+                    origin=origin,
+                    stage=stage,
+                    stage_minutes=stage_minutes,
+                ),
             }
         )
 
@@ -417,9 +423,15 @@ def _premature_containment_trap(phase: IncidentPhase) -> bool:
 def _supporting_evidence_ids(
     events: list[CanonicalEvent],
     phase: IncidentPhase,
+    *,
+    origin: datetime,
+    stage: int,
+    stage_minutes: int,
 ) -> list[str]:
     ids: list[str] = []
     for event in events:
+        if stage_of(event.ts, origin, stage_minutes=stage_minutes) > stage:
+            continue
         if phase == "initial_access" and is_initial_access_event(event):
             ids.append(event.evidence_id)
         elif phase == "lateral_movement" and (

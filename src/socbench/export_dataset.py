@@ -25,7 +25,11 @@ from socbench.raw.host_logs import convert_staged_host_logs, copy_ef_host_logs
 from socbench.sources import build_sources_from_file
 from socbench.sources.models import SourceBuildConfig
 from socbench.stage.bucketize import bucketize_bundle
-from socbench.truth.common import load_canonical_events, resolve_window_start
+from socbench.truth.common import (
+    coerce_window_start_for_staging,
+    load_canonical_events,
+    resolve_window_start,
+)
 from socbench.truth.fox import (
     FOX_MANIFEST_FILENAME,
     build_fox_manifest_from_file,
@@ -103,7 +107,7 @@ def build_dataset(config: DatasetBuildConfig) -> DatasetBuildResult:
     scenario = _load_scenario(scenario_path)
     events_path = _resolve_canonical_events(bundle_dir, scenario, config.seed, staging)
     events = load_canonical_events(events_path)
-    window_start = config.window_start
+    window_start = _resolve_build_window_start(events, config.window_start, config.stage_minutes)
     if window_start is None and events:
         window_start = resolve_window_start(events, None).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -134,7 +138,9 @@ def build_dataset(config: DatasetBuildConfig) -> DatasetBuildResult:
     if config.stream_by_stage:
         grader_staging = staging / "grader"
         grader_staging.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(events_path, grader_staging / CANONICAL_EVENTS_FILENAME)
+        staged_events_path = grader_staging / CANONICAL_EVENTS_FILENAME
+        if events_path.resolve() != staged_events_path.resolve():
+            shutil.copy2(events_path, staged_events_path)
         agent_raw = staging / "agent_raw"
         bucket_result = bucketize_bundle(
             staging,
@@ -253,6 +259,24 @@ def build_evidence_registry(events: list[Any]) -> dict[str, Any]:
 def _load_scenario(path: Path) -> Scenario:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     return Scenario.model_validate(data)
+
+
+def _resolve_build_window_start(
+    events: list[Any],
+    window_start: str | None,
+    stage_minutes: int,
+) -> str | None:
+    """Normalize an explicit staging origin so per-stage manifests stay bounded."""
+    if window_start is None or not events:
+        return window_start
+    coerced, warning = coerce_window_start_for_staging(
+        events,
+        window_start,
+        stage_minutes=stage_minutes,
+    )
+    if warning:
+        logger.warning(warning)
+    return coerced
 
 
 def _resolve_canonical_events(

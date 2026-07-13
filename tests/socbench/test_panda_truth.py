@@ -135,6 +135,39 @@ def test_panda_uses_world_state_slice_not_future_events() -> None:
     assert "EVID-late" not in stage0_manifest["stages"][0]["supporting_evidence_ids"]
 
 
+def test_panda_stage_boundary_supporting_evidence_stays_in_stage() -> None:
+    """Break-then-detect: staging evidence at stage 1 must not appear in stage 0 BLUF."""
+    window_start = "2024-06-03T08:00:00Z"
+    events = [
+        _event(
+            evidence_id="EVID-initial",
+            ts="2024-06-03T08:05:00Z",
+            host="WEB-01",
+            kind="ssh_session",
+            fields={"source_ip": "198.18.50.33", "dst_ip": "10.0.0.5"},
+        ),
+        _event(
+            evidence_id="EVID-stage1-staging",
+            ts="2024-06-03T08:35:00Z",
+            host="FILE-01",
+            fields={
+                "command_line": (
+                    "powershell.exe -NoProfile -Command Compress-Archive "
+                    "-Path C:\\data -DestinationPath C:\\Windows\\Temp\\stage.zip"
+                ),
+                "process_name": "powershell.exe",
+            },
+        ),
+    ]
+    state = world_state_from_events(events, window_start=window_start)
+    manifest = build_panda_manifest(state, window_start=window_start)
+
+    stage0 = manifest["stages"][0]
+    stage1 = manifest["stages"][1]
+    assert "EVID-stage1-staging" not in stage0["supporting_evidence_ids"]
+    assert "EVID-stage1-staging" in stage1["supporting_evidence_ids"]
+
+
 @REQUIRES_COLONIAL_FULL_DATA
 def test_panda_ignores_ground_truth_labels() -> None:
     scenario = Scenario.model_validate(

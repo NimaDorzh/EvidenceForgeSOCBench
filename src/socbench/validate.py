@@ -150,7 +150,7 @@ def validate_causality_respects_stage_order(dataset_root: Path) -> list[str]:
 
     events = load_canonical_events(events_path)
     events_by_id = index_by_evidence_id(events)
-    origin = resolve_window_start(events, None)
+    origin = _manifest_window_start(dataset_root, events)
     stage_minutes = _manifest_stage_minutes(dataset_root)
     errors: list[str] = []
 
@@ -777,6 +777,23 @@ def _latest_agent_data_root(dataset_root: Path) -> Path | None:
         return data_root if data_root.is_dir() else None
     data_root = agent_root / "data"
     return data_root if data_root.is_dir() else None
+
+
+def _manifest_window_start(
+    dataset_root: Path,
+    events: list[CanonicalEvent],
+) -> Any:
+    """Return the staging origin recorded in staged manifests, else infer from events."""
+    manifests_dir = dataset_root / "grader" / "manifests"
+    for filename in ("fox.json", "goat.json", "panda.json"):
+        path = manifests_dir / filename
+        if not path.is_file():
+            continue
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        window_start = manifest.get("window_start")
+        if isinstance(window_start, str) and window_start.strip():
+            return parse_ts(window_start)
+    return resolve_window_start(events, None)
 
 
 def _manifest_stage_minutes(dataset_root: Path) -> int:

@@ -147,6 +147,60 @@ def window_start_alignment_warning(
     )
 
 
+def coerce_window_start_for_staging(
+    events: list[CanonicalEvent],
+    window_start: str | datetime,
+    *,
+    stage_minutes: int = DEFAULT_STAGE_MINUTES,
+) -> tuple[str, str | None]:
+    """Return a staging origin that does not collapse the full timeline into stage 0.
+
+    When an explicit ``window_start`` is after every canonical event timestamp,
+    ``stage_of`` clamps all events to stage 0 even when they span multiple stage
+    buckets. Dataset builds then emit single-stage manifests that cite late-stage
+    evidence in stage 0, which fails causality validation under the inferred
+    origin. In that case, fall back to the earliest event timestamp.
+    """
+    if not events:
+        if isinstance(window_start, str):
+            return window_start, None
+        return window_start.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), None
+
+    origin = (
+        parse_ts(window_start)
+        if isinstance(window_start, str)
+        else window_start.astimezone(UTC)
+    )
+    earliest = min(parse_ts(event.ts) for event in events)
+    latest = max(parse_ts(event.ts) for event in events)
+    if latest >= origin:
+        resolved = (
+            window_start
+            if isinstance(window_start, str)
+            else origin.strftime("%Y-%m-%dT%H:%M:%SZ")
+        )
+        return resolved, None
+
+    inferred = infer_window_start(events).strftime("%Y-%m-%dT%H:%M:%SZ")
+    span_minutes = (latest - earliest).total_seconds() / 60.0
+    collapsed_stage = stage_of(latest, origin, stage_minutes=stage_minutes)
+    if collapsed_stage > 0 or span_minutes >= stage_minutes:
+        gap_minutes = (origin - latest).total_seconds() / 60.0
+        warning = (
+            f"--window-start ({origin.strftime('%Y-%m-%dT%H:%M:%SZ')}) is "
+            f"{gap_minutes:.0f} minutes after the latest canonical event "
+            f"({latest.strftime('%Y-%m-%dT%H:%M:%SZ')}); using inferred origin "
+            f"{inferred} so staged manifests preserve event ordering."
+        )
+        return inferred, warning
+    resolved = (
+        window_start
+        if isinstance(window_start, str)
+        else origin.strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
+    return resolved, None
+
+
 def stage_of(
     ts: str | datetime,
     window_start: datetime,
