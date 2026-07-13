@@ -76,6 +76,7 @@ def validate_dataset(dataset_root: Path) -> ValidationResult:
         validate_helpdesk_not_positive_evidence,
         validate_dp2_agent_clean,
         validate_causality_respects_stage_order,
+        validate_agent_stage_count_aligned,
         validate_tiger_verifiable_edges_reconstructible,
     ):
         result.errors.extend(check(dataset_root))
@@ -157,6 +158,38 @@ def validate_causality_respects_stage_order(dataset_root: Path) -> list[str]:
     errors.extend(_validate_agent_linked_causality(dataset_root, events_by_id, origin, stage_minutes))
     errors.extend(_validate_tiger_temporal_order(dataset_root, events_by_id))
     return errors
+
+
+def validate_agent_stage_count_aligned(dataset_root: Path) -> list[str]:
+    """Ensure streamed agent stage depth stays aligned with grader staged manifests."""
+    from socbench.sources.latency_budget import allowed_agent_stage_slack
+
+    agent_root = dataset_root / "agent"
+    stage_dirs = sorted(path for path in agent_root.glob("stage_*") if path.is_dir())
+    if not stage_dirs:
+        return []
+
+    grader_stage_count = _grader_stage_count(dataset_root)
+    if grader_stage_count is None:
+        return []
+
+    stage_minutes = _manifest_stage_minutes(dataset_root)
+    allowed_slack = allowed_agent_stage_slack(stage_minutes)
+    agent_count = len(stage_dirs)
+    if agent_count < grader_stage_count:
+        return [
+            "agent stage directories "
+            f"({agent_count}) < grader staged manifest stage count ({grader_stage_count})"
+        ]
+    if agent_count > grader_stage_count + allowed_slack:
+        return [
+            "agent stage directories "
+            f"({agent_count}) exceed grader staged manifest stage count "
+            f"({grader_stage_count}) by more than {allowed_slack} "
+            f"(derived from max forward source latency / {stage_minutes}m stages); "
+            "check source timestamps for out-of-window hardcoded dates"
+        ]
+    return []
 
 
 def validate_tiger_verifiable_edges_reconstructible(dataset_root: Path) -> list[str]:
@@ -753,6 +786,23 @@ def _manifest_stage_minutes(dataset_root: Path) -> int:
         if isinstance(stage_minutes, int):
             return stage_minutes
     return DEFAULT_STAGE_MINUTES
+
+
+def _grader_stage_count(dataset_root: Path) -> int | None:
+    """Return staged manifest depth from fox/goat/panda when present."""
+    manifests_dir = dataset_root / "grader" / "manifests"
+    counts: list[int] = []
+    for filename in ("fox.json", "goat.json", "panda.json"):
+        path = manifests_dir / filename
+        if not path.is_file():
+            continue
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        stages = manifest.get("stages")
+        if isinstance(stages, list):
+            counts.append(len(stages))
+    if not counts:
+        return None
+    return max(counts)
 
 
 def _fields_from_alert(record: dict[str, Any], kind: str) -> dict[str, Any]:

@@ -11,8 +11,13 @@ from socbench.sources.common import (
     apply_latency,
     build_llm_cache,
     grader_metadata,
+    pre_scenario_ts,
     summarize_result,
     write_source_records,
+)
+from socbench.sources.latency_budget import (
+    CTI_RELEVANT_MAX_LATENCY_MS,
+    CTI_RELEVANT_MIN_LATENCY_MS,
 )
 from socbench.sources.models import SourceBuildConfig, SourceBuildResult, SourceRecord
 from socbench.sources.text import render_template_text
@@ -32,7 +37,7 @@ def build_cti_source(
     """Write relevant CTI IOC rows plus deterministic trap feeds."""
     llm_cache = build_llm_cache(config)
     relevant_records = _build_relevant_records(events, config, llm_cache)
-    trap_records = _build_trap_records(config)
+    trap_records = _build_trap_records(events, config)
 
     files: list[Path] = []
     cti_root = data_root / CTI_DIR / "feeds"
@@ -133,7 +138,10 @@ def _extract_indicators(event: CanonicalEvent) -> list[tuple[str, str]]:
     return indicators
 
 
-def _build_trap_records(config: SourceBuildConfig) -> list[SourceRecord]:
+def _build_trap_records(
+    events: list[CanonicalEvent],
+    config: SourceBuildConfig,
+) -> list[SourceRecord]:
     from random import Random
 
     rng = Random(stable_seed(f"cti_trap:{config.seed}"))
@@ -146,7 +154,7 @@ def _build_trap_records(config: SourceBuildConfig) -> list[SourceRecord]:
             SourceRecord(
                 payload={
                     "record_id": f"cti-trap-{index:03d}",
-                    "ts": f"2024-06-01T{rng.randint(0, 23):02d}:{rng.randint(0, 59):02d}:00Z",
+                    "ts": pre_scenario_ts(events, config, salt="cti_trap", index=index),
                     "feed": f"trap_noise_{index // TRAP_IOC_PER_FEED:02d}",
                     "indicator_type": indicator_type,
                     "indicator": indicator,
@@ -173,4 +181,4 @@ def _cti_latency_ms(seed: int, evidence_id: str, indicator: str) -> int:
     from random import Random
 
     rng = Random(stable_seed(f"cti_latency:{seed}:{evidence_id}:{indicator}"))
-    return rng.randint(600_000, 3_600_000)
+    return rng.randint(CTI_RELEVANT_MIN_LATENCY_MS, CTI_RELEVANT_MAX_LATENCY_MS)

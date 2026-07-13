@@ -23,7 +23,7 @@ from socbench.sources.models import SourceBuildConfig
 from socbench.sources.siem import build_siem_source
 from socbench.sources.text import LlmTextCache, render_template_text
 from socbench.sources.vss import build_vss_source
-from socbench.truth.common import index_by_evidence_id, is_vss_delete_event
+from socbench.truth.common import index_by_evidence_id, is_vss_delete_event, parse_ts, resolve_window_start
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COLONIAL_EVENTS = (
@@ -130,6 +130,54 @@ def test_cti_trap_feeds_have_no_attack_evidence_ids(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+def test_cti_trap_timestamps_are_pre_scenario_and_deterministic(tmp_path: Path) -> None:
+    events = load_events(COLONIAL_EVENTS)
+    config = _colonial_config()
+    origin = resolve_window_start(events, config.window_start)
+
+    first_root = tmp_path / "run1" / "data"
+    second_root = tmp_path / "run2" / "data"
+    build_cti_source(events, first_root, config)
+    build_cti_source(events, second_root, config)
+
+    def _trap_rows(root: Path) -> list[dict[str, object]]:
+        rows: list[dict[str, object]] = []
+        for feed_path in sorted((root / "cti" / "feeds").glob("trap_noise_*.ndjson")):
+            rows.extend(_load_ndjson(feed_path))
+        return rows
+
+    first_traps = _trap_rows(first_root)
+    second_traps = _trap_rows(second_root)
+    assert first_traps
+    assert [row["ts"] for row in first_traps] == [row["ts"] for row in second_traps]
+
+    for row in first_traps:
+        ts = parse_ts(str(row["ts"]))
+        assert ts < origin, "trap IOC timestamps must predate the scenario window"
+
+
+@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+def test_cti_relevant_timestamps_respect_forward_latency_budget(tmp_path: Path) -> None:
+    from datetime import timedelta
+
+    from socbench.sources.latency_budget import CTI_RELEVANT_MAX_LATENCY_MS
+
+    events = load_events(COLONIAL_EVENTS)
+    config = _colonial_config()
+    data_root = tmp_path / "data"
+    build_cti_source(events, data_root, config)
+
+    origin = resolve_window_start(events, config.window_start)
+    last_event = max(events, key=lambda event: parse_ts(event.ts))
+    horizon = parse_ts(last_event.ts) + timedelta(milliseconds=CTI_RELEVANT_MAX_LATENCY_MS)
+    relevant = _load_ndjson(data_root / "cti" / "feeds" / "incident_correlation.ndjson")
+    assert relevant
+    for row in relevant:
+        ts = parse_ts(str(row["ts"]))
+        assert origin <= ts <= horizon
+
+
+@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
 def test_hostmetrics_excluded_hosts_documented_and_omitted(tmp_path: Path) -> None:
     events = load_events(COLONIAL_EVENTS)
     data_root = tmp_path / "data"
@@ -176,6 +224,24 @@ def test_siem_latency_fp_fn_rules(tmp_path: Path) -> None:
 
     xdr_rows = _load_ndjson(data_root / "siem" / "xdr_anomalies.ndjson")
     assert xdr_rows
+
+
+@pytest.mark.skipif(not COLONIAL_EVENTS.is_file(), reason="colonial canonical events missing")
+def test_siem_false_positive_timestamps_stay_within_scenario_window(tmp_path: Path) -> None:
+    events = load_events(COLONIAL_EVENTS)
+    config = _colonial_config()
+    data_root = tmp_path / "data"
+    build_siem_source(events, data_root, config)
+
+    origin = resolve_window_start(events, config.window_start)
+    last_event = max(events, key=lambda event: parse_ts(event.ts))
+    horizon = parse_ts(last_event.ts)
+    alerts = _load_ndjson(data_root / "siem" / "alerts.ndjson")
+    fp_rows = [row for row in alerts if row.get("false_positive") is True]
+    assert fp_rows
+    for row in fp_rows:
+        ts = parse_ts(str(row["ts"]))
+        assert origin <= ts <= horizon
 
 
 def test_render_template_is_deterministic_without_llm() -> None:

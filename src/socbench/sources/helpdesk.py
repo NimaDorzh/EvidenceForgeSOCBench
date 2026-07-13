@@ -14,29 +14,18 @@ from socbench.sources.common import (
     summarize_result,
     write_source_records,
 )
+from socbench.sources.latency_budget import (
+    HELPDESK_LATENCY_JITTER_MS,
+    HELPDESK_LATENCY_MIN_MS,
+    HELPDESK_NEGATIVE_JITTER_MS,
+)
 from socbench.sources.models import SourceBuildConfig, SourceBuildResult, SourceRecord
 from socbench.sources.text import render_template_text
-from socbench.truth.common import is_ransomware_event, resolve_window_start, stage_of
+from socbench.truth.common import is_ransomware_event, parse_ts, resolve_window_start, stage_of
 
 HELPDESK_DIR = "helpdesk"
-
-# Colonial-style workstation users mapped to affected file-server hosts.
-_HOST_REPORTERS: dict[str, list[tuple[str, str]]] = {
-    "FS-01": [
-        ("j.walsh", "WKS-01"),
-        ("m.chen", "WKS-02"),
-        ("r.patel", "WKS-03"),
-    ],
-    "FS-02": [
-        ("s.kim", "WKS-04"),
-        ("d.nguyen", "WKS-04"),
-    ],
-}
-
-_TEMPLATE_BY_HOST: dict[str, str] = {
-    "FS-01": "ransom_note_v3",
-    "FS-02": "ransom_note_v2",
-}
+_HELPDESK_TEMPLATES = ("ransom_note_v1", "ransom_note_v2", "ransom_note_v3")
+_INTERACTIVE_HOST_PREFIXES = ("WKS", "OFFICE", "MUSIC", "WS-")
 
 
 def build_helpdesk_source(
@@ -57,8 +46,8 @@ def build_helpdesk_source(
             if event_stage < min_stage:
                 continue
 
-        reporters = _HOST_REPORTERS.get(event.host, [("user", event.host)])
-        template_id = _TEMPLATE_BY_HOST.get(event.host, "ransom_note_v1")
+        reporters = _derive_helpdesk_reporters(event, events)
+        template_id = _helpdesk_template_id(event.host, config.seed)
         for ticket_index, (username, workstation) in enumerate(reporters):
             latency_ms = _ticket_latency_ms(
                 config.seed,
@@ -106,12 +95,110 @@ def build_helpdesk_source(
     return summarize_result("helpdesk", files, records)
 
 
+def _derive_helpdesk_reporters(
+    encrypt_event: CanonicalEvent,
+    events: list[CanonicalEvent],
+) -> list[tuple[str, str]]:
+    """Derive ticket reporters from canonical events that reference the affected host."""
+    affected_host = encrypt_event.host
+    encrypt_time = parse_ts(encrypt_event.ts)
+    prior_events = [event for event in events if parse_ts(event.ts) <= encrypt_time]
+    ip_to_host = _internal_ip_to_host(prior_events)
+    reporters: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(username: str, workstation: str) -> None:
+        user = _normalize_username(username)
+        ws = workstation or affected_host
+        pair = (user, ws)
+        if user and pair not in seen:
+            seen.add(pair)
+            reporters.append(pair)
+
+    for event in prior_events:
+        if event.kind == "explicit_credentials":
+            target = event.fields.get("target_server")
+            if target != affected_host:
+                continue
+            username = str(event.fields.get("target_username", event.actor))
+            workstation = _workstation_for_actor(prior_events, event.actor, ip_to_host)
+            add(username, workstation)
+
+    for event in prior_events:
+        if event.kind != "logon" or event.host != affected_host:
+            continue
+        source_ip = event.fields.get("source_ip")
+        workstation = affected_host
+        if isinstance(source_ip, str):
+            workstation = ip_to_host.get(
+                source_ip,
+                _workstation_from_source_ip(prior_events, source_ip),
+            )
+        add(event.actor, workstation)
+
+    if not reporters:
+        add(encrypt_event.actor, affected_host)
+
+    reporters.sort()
+    return reporters[:5]
+
+
+def _helpdesk_template_id(host: str, seed: int) -> str:
+    index = stable_seed(f"helpdesk_template:{seed}:{host}") % len(_HELPDESK_TEMPLATES)
+    return _HELPDESK_TEMPLATES[index]
+
+
+def _normalize_username(username: str) -> str:
+    if "\\" in username:
+        return username.split("\\", maxsplit=1)[1]
+    return username
+
+
+def _internal_ip_to_host(events: list[CanonicalEvent]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for event in events:
+        source_ip = event.fields.get("source_ip")
+        if isinstance(source_ip, str) and source_ip.startswith("10."):
+            mapping.setdefault(source_ip, event.host)
+    return mapping
+
+
+def _workstation_for_actor(
+    events: list[CanonicalEvent],
+    actor: str,
+    ip_to_host: dict[str, str],
+) -> str:
+    del ip_to_host
+    for event in events:
+        if event.actor != actor:
+            continue
+        if _looks_like_workstation(event.host):
+            return event.host
+    for event in events:
+        if event.actor == actor:
+            return event.host
+    return "UNKNOWN-WS"
+
+
+def _workstation_from_source_ip(events: list[CanonicalEvent], source_ip: str) -> str:
+    for event in events:
+        if event.fields.get("source_ip") != source_ip:
+            continue
+        if event.kind in {"rdp_session", "logon", "connection", "ssh_session"}:
+            return event.host
+    return f"WS-{source_ip.rsplit('.', maxsplit=1)[-1]}"
+
+
+def _looks_like_workstation(host: str) -> bool:
+    return host.startswith(_INTERACTIVE_HOST_PREFIXES) or "OPS" in host
+
+
 def _ticket_latency_ms(seed: int, evidence_id: str, ticket_index: int, *, base_ms: int) -> int:
     from random import Random
 
     rng = Random(stable_seed(f"helpdesk_latency:{seed}:{evidence_id}:{ticket_index}"))
-    jitter = rng.randint(-300_000, 900_000)
-    return max(60_000, base_ms + jitter)
+    jitter = rng.randint(-HELPDESK_NEGATIVE_JITTER_MS, HELPDESK_LATENCY_JITTER_MS)
+    return max(HELPDESK_LATENCY_MIN_MS, base_ms + jitter)
 
 
 def _ticket_id(seed: int, evidence_id: str, ticket_index: int) -> str:

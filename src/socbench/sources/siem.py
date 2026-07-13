@@ -12,10 +12,16 @@ from socbench.capture.models import CanonicalEvent
 from socbench.sources.common import (
     apply_latency,
     build_llm_cache,
+    early_scenario_ts,
     event_summary_for_slots,
     grader_metadata,
     summarize_result,
     write_source_records,
+)
+from socbench.sources.latency_budget import (
+    SIEM_RULE_MAX_LATENCY_MS,
+    XDR_MAX_LATENCY_MS,
+    XDR_MIN_LATENCY_MS,
 )
 from socbench.sources.models import SourceBuildConfig, SourceBuildResult, SourceRecord
 from socbench.sources.text import render_template_text
@@ -140,7 +146,7 @@ def _default_rules() -> list[SiemRule]:
             severity="high",
             summary="Large outbound transfer to external destination",
             template_id="siem_alert_v1",
-            latency_ms=300_000,
+            latency_ms=SIEM_RULE_MAX_LATENCY_MS,
             fn_rate=0.0,
             matcher=is_exfil_connection_event,
         ),
@@ -232,7 +238,7 @@ def _xdr_rows_for_event(
         SourceRecord(
             payload={
                 "record_id": f"xdr-{event.evidence_id}",
-                "ts": apply_latency(event.ts, rng.randint(30_000, 150_000)),
+                "ts": apply_latency(event.ts, rng.randint(XDR_MIN_LATENCY_MS, XDR_MAX_LATENCY_MS)),
                 "host": event.host,
                 "anomaly_type": anomaly_type,
                 "score": score,
@@ -275,7 +281,12 @@ def _false_positive_alerts(
             SourceRecord(
                 payload={
                     "alert_id": f"SIEM-{rule_id}-noise-{index}",
-                    "ts": "2024-06-03T08:30:00Z",
+                    "ts": early_scenario_ts(
+                        events,
+                        config,
+                        salt="siem_fp",
+                        index=index,
+                    ),
                     "rule_id": rule_id,
                     "severity": "low",
                     "host": host,

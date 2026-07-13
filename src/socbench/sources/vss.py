@@ -14,6 +14,7 @@ from socbench.sources.common import (
     summarize_result,
     write_source_records,
 )
+from socbench.sources.latency_budget import VSS_MAX_LATENCY_MS, VSS_MIN_LATENCY_MS
 from socbench.sources.models import SourceBuildConfig, SourceBuildResult, SourceRecord
 from socbench.sources.text import render_template_text
 from socbench.truth.common import is_vss_delete_event
@@ -104,4 +105,4 @@ def _vss_latency_ms(seed: int, evidence_id: str) -> int:
     from random import Random
 
     rng = Random(stable_seed(f"vss_latency:{seed}:{evidence_id}"))
-    return rng.randint(30_000, 120_000)
+    return rng.randint(VSS_MIN_LATENCY_MS, VSS_MAX_LATENCY_MS)

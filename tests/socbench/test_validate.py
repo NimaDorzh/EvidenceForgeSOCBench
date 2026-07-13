@@ -9,6 +9,7 @@ import pytest
 
 from socbench.export_dataset import DatasetBuildConfig, build_dataset
 from socbench.validate import (
+    validate_agent_stage_count_aligned,
     validate_claim_evidence_ids_resolve,
     validate_causality_respects_stage_order,
     validate_dataset,
@@ -53,6 +54,10 @@ def test_validate_dp2_agent_clean_passes(built_dataset: Path) -> None:
 
 def test_validate_causality_respects_stage_order_passes(built_dataset: Path) -> None:
     assert validate_causality_respects_stage_order(built_dataset) == []
+
+
+def test_validate_agent_stage_count_aligned_passes(built_dataset: Path) -> None:
+    assert validate_agent_stage_count_aligned(built_dataset) == []
 
 
 def test_validate_tiger_verifiable_edges_reconstructible_passes(built_dataset: Path) -> None:
@@ -195,3 +200,80 @@ def test_validate_dataset_aggregate_fails_when_any_invariant_breaks(built_datase
     result = validate_dataset(built_dataset)
     assert not result.ok
     assert any("evidence_id" in error for error in result.errors)
+
+
+def test_validate_agent_stage_count_fails_when_agent_stages_exceed_grader(
+    tmp_path: Path,
+) -> None:
+    """Far out-of-window source timestamps must fail stage-depth validation."""
+    dataset = tmp_path / "dataset"
+    manifests_dir = dataset / "grader" / "manifests"
+    manifests_dir.mkdir(parents=True)
+    (manifests_dir / "fox.json").write_text(
+        json.dumps({"stages": [{"stage": 0}, {"stage": 1}, {"stage": 2}], "stage_minutes": 30})
+        + "\n",
+        encoding="utf-8",
+    )
+    (dataset / "grader" / "canonical_events.ndjson").write_text(
+        json.dumps(
+            {
+                "evidence_id": "EVID-abc",
+                "ts": "2024-01-01T00:00:00Z",
+                "host": "HOST-01",
+                "kind": "process",
+                "fields": {},
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    for stage_index in range(10):
+        stage_dir = dataset / "agent" / f"stage_{stage_index:02d}" / "data"
+        stage_dir.mkdir(parents=True)
+
+    errors = validate_agent_stage_count_aligned(dataset)
+    assert errors
+    assert any("derived from max forward source latency" in error for error in errors)
+
+
+def test_validate_agent_stage_slack_uses_manifest_stage_minutes(tmp_path: Path) -> None:
+    """Validator must read stage_minutes from manifests, not assume 30m."""
+    from socbench.sources.latency_budget import allowed_agent_stage_slack
+
+    dataset = tmp_path / "dataset"
+    manifests_dir = dataset / "grader" / "manifests"
+    manifests_dir.mkdir(parents=True)
+    stage_minutes = 15
+    (manifests_dir / "fox.json").write_text(
+        json.dumps({"stages": [{"stage": 0}, {"stage": 1}, {"stage": 2}], "stage_minutes": stage_minutes})
+        + "\n",
+        encoding="utf-8",
+    )
+    (dataset / "grader" / "canonical_events.ndjson").write_text(
+        json.dumps(
+            {
+                "evidence_id": "EVID-abc",
+                "ts": "2024-01-01T00:00:00Z",
+                "host": "HOST-01",
+                "kind": "process",
+                "fields": {},
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    allowed = allowed_agent_stage_slack(stage_minutes)
+    grader_stages = 3
+    # One stage beyond grader+allowed slack must fail; exactly at boundary must pass.
+    for stage_index in range(grader_stages + allowed):
+        stage_dir = dataset / "agent" / f"stage_{stage_index:02d}" / "data"
+        stage_dir.mkdir(parents=True)
+    assert validate_agent_stage_count_aligned(dataset) == []
+
+    overflow = dataset / "agent" / f"stage_{grader_stages + allowed:02d}" / "data"
+    overflow.mkdir(parents=True)
+    errors = validate_agent_stage_count_aligned(dataset)
+    assert errors
+    assert str(stage_minutes) in errors[0]

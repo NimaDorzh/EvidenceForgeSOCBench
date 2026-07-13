@@ -112,6 +112,47 @@ def collect_hosts(events: list[CanonicalEvent]) -> list[str]:
     return sorted({event.host for event in events})
 
 
+def early_scenario_ts(
+    events: list[CanonicalEvent],
+    config: SourceBuildConfig,
+    *,
+    salt: str,
+    index: int = 0,
+) -> str:
+    """Return a deterministic timestamp near the start of the scenario window."""
+    from random import Random
+
+    from socbench.capture.hashing import stable_seed
+
+    origin = resolve_window_start(events, config.window_start)
+    rng = Random(stable_seed(f"{salt}:{config.seed}:{index}"))
+    offset_minutes = rng.randint(0, max(config.stage_minutes - 1, 0))
+    shifted = origin + timedelta(minutes=offset_minutes)
+    return shifted.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def pre_scenario_ts(
+    events: list[CanonicalEvent],
+    config: SourceBuildConfig,
+    *,
+    salt: str,
+    index: int = 0,
+) -> str:
+    """Return a deterministic timestamp before the scenario window (trap/historical noise)."""
+    from random import Random
+
+    from socbench.capture.hashing import stable_seed
+
+    origin = resolve_window_start(events, config.window_start)
+    rng = Random(stable_seed(f"{salt}:{config.seed}:{index}"))
+    shifted = origin - timedelta(
+        days=rng.randint(1, 30),
+        hours=rng.randint(0, 23),
+        minutes=rng.randint(0, 59),
+    )
+    return shifted.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _record_sort_key(record: SourceRecord) -> tuple[str, str]:
     payload = record.payload
     ts = str(payload.get("ts", ""))
