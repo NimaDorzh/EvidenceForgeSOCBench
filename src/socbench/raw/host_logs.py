@@ -15,8 +15,6 @@ from socbench.raw.errors import (
     JournalBackendUnavailableError,
     JournalConversionError,
 )
-from socbench.raw.evtx import convert_xml_file_to_evtx
-from socbench.raw.journal import convert_syslog_file_to_journal
 from socbench.sources.common import file_digest
 from socbench.truth.common import stage_of
 
@@ -137,10 +135,14 @@ def convert_staged_host_logs(agent_root: Path, *, remove_text_sources: bool = Tr
                 continue
             try:
                 if rel_path.name == WINDOWS_SECURITY_XML:
+                    from socbench.raw.evtx import convert_xml_file_to_evtx
+
                     dst = src.with_name(WINDOWS_SECURITY_EVTX)
                     event_count = convert_xml_file_to_evtx(src, dst)
                     logger.info("Converted %s (%s events) -> %s", src, event_count, dst)
                 elif rel_path.name == SYSLOG_LOG:
+                    from socbench.raw.journal import convert_syslog_file_to_journal
+
                     dst = src.with_name(SYSTEM_JOURNAL)
                     record_count = convert_syslog_file_to_journal(src, dst)
                     logger.info("Converted %s (%s records) -> %s", src, record_count, dst)

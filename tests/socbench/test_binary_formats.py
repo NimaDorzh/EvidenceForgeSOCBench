@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+from tests.socbench.colonial_fixtures import (
+    COLONIAL_DATA,
+    COLONIAL_EVENTS,
+    COLONIAL_WINDOW_START,
+    REQUIRES_COLONIAL_FULL_DATA,
+)
 
+from socbench.raw.errors import EvtxConversionError
 from socbench.raw.evtx import (
+    _parse_evtx_with_python_evtx,
     compare_event_field_sets,
     convert_xml_file_to_evtx,
     parse_evtx_event_fields,
@@ -28,14 +38,6 @@ from socbench.raw.journal import (
     wsl_journal_remote_available,
 )
 from socbench.truth.common import load_canonical_events, resolve_window_start, stage_of
-from tests.socbench.colonial_fixtures import (
-    COLONIAL_DATA,
-    COLONIAL_EVENTS,
-    COLONIAL_FULL_BUNDLE,
-    COLONIAL_SCENARIO,
-    COLONIAL_WINDOW_START,
-    REQUIRES_COLONIAL_FULL_DATA,
-)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_XML = REPO_ROOT / "tests" / "fixtures" / "eval" / "good" / "windows_event_security.xml"
@@ -67,9 +69,72 @@ def test_evtx_roundtrip_fixture_fields_match(tmp_path: Path) -> None:
     assert event_count == len(source_fields)
     assert evtx_path.stat().st_size > 0
 
-    parsed_fields = parse_evtx_event_fields(evtx_path)
+    parsed_fields = _parse_evtx_with_python_evtx(evtx_path)
+    assert len(parsed_fields) == len(source_fields)
     mismatches = compare_event_field_sets(source_fields, parsed_fields)
     assert mismatches == [], "\n".join(mismatches)
+
+    # High-level API: wevtutil on Windows when available, else python-evtx fallback.
+    api_fields = parse_evtx_event_fields(evtx_path)
+    assert len(api_fields) == len(source_fields)
+    assert compare_event_field_sets(source_fields, api_fields) == []
+
+
+@pytest.mark.binary_formats
+def test_evtx_corrupted_eof_fails_python_evtx_parse(tmp_path: Path) -> None:
+    """Break-then-detect: corrupting BinXmlTokenEOF must not silently round-trip."""
+    from Evtx.BinaryParser import OverrunBufferException, ParseException
+
+    evtx_path = tmp_path / "corrupt.evtx"
+    convert_xml_file_to_evtx(FIXTURE_XML, evtx_path)
+    data = bytearray(evtx_path.read_bytes())
+    record_sig = data.index(b"\x2a\x2a\x00\x00")
+    record_size = int.from_bytes(data[record_sig + 4 : record_sig + 8], "little")
+    record_end = record_sig + record_size
+    eof_offset: int | None = None
+    for index in range(record_sig + 0x1C, record_end - 1):
+        if data[index - 1] == 0x04 and data[index] == 0x00:
+            eof_offset = index
+            break
+    assert eof_offset is not None, "BinXmlTokenEOF not found in first EVTX record"
+    data[eof_offset] = 0xFF
+    evtx_path.write_bytes(data)
+
+    with pytest.raises(
+        (EvtxConversionError, AttributeError, KeyError, OverrunBufferException, ParseException)
+    ):
+        _parse_evtx_with_python_evtx(evtx_path)
+
+
+def test_socbench_stage_imports_without_binary_format_deps() -> None:
+    """``socbench.stage`` / ``socbench.truth.panda`` must not require lxml at import."""
+    repo_root = REPO_ROOT
+    code = f"""
+import builtins
+import sys
+
+sys.path.insert(0, {str(repo_root / "src")!r})
+
+real_import = builtins.__import__
+
+def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+    root = name.partition(".")[0]
+    if root in {{"lxml", "Evtx"}}:
+        raise ImportError(f"optional binary-format dep blocked: {{name}}")
+    return real_import(name, globals, locals, fromlist, level)
+
+builtins.__import__ = guarded_import
+
+import socbench.stage.bucketize  # noqa: F401
+import socbench.truth.panda  # noqa: F401
+"""
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
 
 
 @pytest.mark.binary_formats

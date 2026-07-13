@@ -129,6 +129,12 @@ BINXML_TEMPLATE_DEFINITION = {
 }
 
 BINXML_ELEMENT_START = {
+    # JPCERT upstream uses a 9-byte header (token + data_size + name_offset).
+    # MS-EVEN6 adds a 2-byte dependency_identifier before data_size; python-evtx
+    # expects that 11-byte layout. We intentionally keep the 9-byte JPCERT
+    # format so Windows wevtutil can read the output; see
+    # ``socbench.raw.evtx._jpcert_open_start_element_node`` for the matching
+    # parser walker.
     "open_start_element_tag_token": ("B", None),
     "data_size": ("I", None),
     "element_name_offset": ("I", 0x99999999),

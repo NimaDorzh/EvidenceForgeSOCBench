@@ -129,15 +129,15 @@ layer.
 
 | Dependency | Role | Verified |
 |------------|------|----------|
-| `lxml`, `python-evtx` | EVTX encode/read-back tests | ✅ (`uv sync --extra binary-formats`) |
+| `lxml`, `python-evtx` | EVTX encode/read-back tests | ✅ (`uv sync --extra binary-formats`); parser uses JPCERT-aware walker, not `record.xml()` |
 | Docker Desktop ≥28.x (running daemon) | Journal import via `quay.io/fedora/fedora:40` | ✅ 28.5.1 (2026-07-12) |
 | WSL + `systemd-journal-remote` | Journal fallback backend | ⚠️ Optional; not verified on this host |
-| Windows `wevtutil qe` | Optional EVTX cross-check | ✅ Win11 26200 |
-| Chainsaw | Optional manual EVTX validation | ❌ Not installed |
+| Windows `wevtutil qe` | EVTX cross-check (JPCERT 9-byte BinXML wire format) | ✅ Win11 26200 (2026-07-13) |
+| Chainsaw | Optional manual EVTX validation | ❌ Not installed — TODO: cross-check Colonial `.evtx` when CLI available |
 
 | Artifact | Conversion | Verification |
 |----------|------------|--------------|
-| `.evtx` | Pure Python encoder (`socbench.raw`, derived from JPCERT `xml2evtx`) | `python-evtx` round-trip tests; optional [Chainsaw](https://github.com/WithSecure/chainsaw) CLI |
+| `.evtx` | Pure Python encoder (`socbench.raw`, derived from JPCERT `xml2evtx`) | `python-evtx` round-trip via JPCERT-aware walker; `wevtutil qe` on Windows; optional [Chainsaw](https://github.com/WithSecure/chainsaw) CLI (deferred) |
 | `.journal` | Journal Export Format → `systemd-journal-remote` via Docker (preferred) or WSL | `journalctl --file` round-trip tests |
 
 Install optional Python deps: `uv sync --extra binary-formats`. Journal
@@ -152,6 +152,12 @@ is build-time scratch space only and is removed before `MANIFEST.json` is writte
 into live channels on all builds. SOC-bench therefore uses the vendored
 `xml2evtx` encoder instead of `wevtutil im` so conversion stays reproducible
 without admin privileges.
+
+**python-evtx note:** JPCERT emits 9-byte `OpenStartElement` headers (no
+MS-EVEN6 `dependency_identifier`). `python-evtx`'s `record.xml()` expects
+11-byte headers and template instances; SOC-bench parses encoded files with a
+JPCERT-aware BinXML walker in `socbench.raw.evtx` instead. Do not use
+`record.xml()` alone to validate SOC-bench EVTX output.
 
 
 **Symptom (pre-fix):** `truth build` with scenario `time_window.start` earlier
